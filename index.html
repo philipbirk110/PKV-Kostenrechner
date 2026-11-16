@@ -1,0 +1,1583 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PKV-Kostenrechner</title>
+<meta name="theme-color" content="#1f5fa8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="PKV-Rechner">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="robots" content="noindex,nofollow">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Aufbau wie Haushaltsbuch: Ergebnis zuerst (Entscheidung, Vergleich, Verlauf, Rechnungen), danach Eingaben; ab 900px zwei Spalten. */
+:root {
+  --bg: #f1f4f8;
+  --surface: #ffffff;
+  --fg: #142033;
+  --muted: #5a6779;
+  --line: #d9e0e9;
+  --pkv: #1f5fa8;      /* einreichen / PKV */
+  --self: #9a560c;     /* selbst zahlen */
+  --pos: #17794a;      /* Erstattung */
+  --neg: #b3261e;      /* Eigenanteil */
+  --bre: #6a4aa5;      /* Rückerstattung / Pauschale */
+  --focus: #1b6fd1;
+  --hl: #e7eef8;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e141c; --surface: #161e29; --fg: #e4ebf3; --muted: #93a1b3; --line: #273444;
+    --pkv: #7fb0ec; --self: #f0a44f; --pos: #55c98c; --neg: #ff8a80; --bre: #b9a0f0; --focus: #6aa8f5; --hl: #1d2a3b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e141c; --surface: #161e29; --fg: #e4ebf3; --muted: #93a1b3; --line: #273444;
+  --pkv: #7fb0ec; --self: #f0a44f; --pos: #55c98c; --neg: #ff8a80; --bre: #b9a0f0; --focus: #6aa8f5; --hl: #1d2a3b;
+  color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 1080px; margin-inline: auto; display: flex; flex-direction: column; gap: 20px; }
+h1 { font-size: 1.6rem; line-height: 1.2; margin: 0; font-weight: 600; text-wrap: balance; }
+h2 { font-size: 1.05rem; margin: 0; font-weight: 600; text-wrap: balance; }
+p { margin: 0; }
+.sub { color: var(--muted); margin-top: 4px; max-width: 65ch; }
+.cols { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 900px) { .cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.stack { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.verdict { font-size: 1.2rem; line-height: 1.35; font-weight: 600; text-wrap: balance; }
+.verdict.v-self { color: var(--self); } .verdict.v-pkv { color: var(--pkv); }
+.verdict-sub { color: var(--muted); margin-top: -6px; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 14px 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.fact span { display: block; font-size: 0.78rem; color: var(--muted); }
+.fact b { display: block; font-family: var(--font-mono); font-weight: 500; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.c-pos { color: var(--pos); } .c-neg { color: var(--neg); } .c-bre { color: var(--bre); } .c-pkv { color: var(--pkv); } .c-self { color: var(--self); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.85rem; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+.legend i.line { height: 0; border-top: 2px dashed var(--self); border-radius: 0; width: 16px; vertical-align: 3px; }
+.chart { width: 100%; height: auto; display: block; }
+.chart text { font-family: var(--font-mono); font-size: 11px; fill: var(--muted); }
+.chart .grid { stroke: var(--line); stroke-width: 1; fill: none; }
+.chart .b-e { fill: var(--pos); } .chart .b-o { fill: var(--neg); }
+.chart .th { stroke: var(--self); stroke-width: 2; stroke-dasharray: 6 4; fill: none; }
+.chart .thl { fill: var(--self); }
+.bars { display: flex; flex-direction: column; gap: 12px; }
+.bar-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline; }
+.bar-row span { font-size: 0.9rem; }
+.bar-row b { font-family: var(--font-mono); font-weight: 500; font-variant-numeric: tabular-nums; font-size: 0.9rem; }
+.bar { grid-column: 1 / -1; height: 10px; background: var(--bg); border-radius: 5px; overflow: hidden; display: flex; }
+.bar i { display: block; height: 100%; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+td.l, th.l { text-align: left; }
+th { font-size: 0.78rem; color: var(--muted); font-weight: 500; }
+td.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+tr.total td { font-weight: 600; border-top: 2px solid var(--line); }
+td.best, th.best { background: var(--hl); }
+.cmp td:first-child { white-space: normal; min-width: 150px; }
+.foot { font-size: 0.8rem; color: var(--muted); max-width: 70ch; }
+.chip { display: inline-block; font-size: 0.75rem; font-weight: 500; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
+.chip.s-eingereicht { color: var(--pkv); } .chip.s-selbst { color: var(--self); } .chip.s-offen { color: var(--muted); }
+
+/* Eingaben */
+input, select, button { font: inherit; color: var(--fg); }
+input[type=text], input[type=date], select { padding: 8px 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; min-width: 0; width: 100%; }
+input.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+input[readonly] { color: var(--muted); }
+input:focus-visible, button:focus-visible, select:focus-visible, summary:focus-visible, label.filebtn:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+button { font-weight: 500; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.ghost { border-color: transparent; background: transparent; color: var(--muted); padding: 6px 8px; }
+button.ghost:hover { color: var(--fg); border-color: var(--line); }
+button.add { align-self: flex-start; color: var(--focus); border-style: dashed; }
+button.primary { background: var(--pkv); border-color: var(--pkv); color: var(--surface); }
+button.danger { color: var(--neg); }
+.tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; flex-direction: row; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.filebtn { font-weight: 500; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; }
+.filebtn:hover { border-color: var(--muted); }
+.status { flex-basis: 100%; color: var(--muted); font-size: 0.8rem; }
+.status.warn { color: var(--neg); font-weight: 500; }
+.yearnav { display: flex; gap: 8px; align-items: center; }
+.yearnav select { width: auto; font-weight: 600; font-family: var(--font-mono); }
+.keybox { flex-basis: 100%; background: var(--bg); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; font-size: 0.9rem; }
+.rowbtns { display: flex; gap: 8px; flex-wrap: wrap; }
+.restore { border-color: var(--self); }
+.restore p { font-size: 0.92rem; }
+.confirm { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 0.9rem; background: var(--bg); padding: 8px 10px; border-radius: 6px; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.field > span { font-size: 0.75rem; color: var(--muted); }
+.field.wide { grid-column: 1 / -1; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 0.88rem; grid-column: 1 / -1; }
+.check input { width: 18px; height: 18px; accent-color: var(--pkv); }
+.note { font-size: 0.85rem; color: var(--muted); background: var(--bg); border-radius: 6px; padding: 8px 10px; }
+.bills { display: flex; flex-direction: column; }
+.bill { border-bottom: 1px solid var(--line); padding-block: 10px; display: flex; flex-direction: column; gap: 10px; }
+.bill:last-child { border-bottom: 0; }
+.bhead { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; cursor: pointer; background: none; border: 0; padding: 0; text-align: left; font-weight: 400; width: 100%; }
+.bhead:hover { border: 0; }
+.bhead .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bhead .m { font-size: 0.8rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bhead .a { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+.bhead .d { font-family: var(--font-mono); font-size: 0.8rem; text-align: right; }
+.bbody { display: flex; flex-direction: column; gap: 10px; padding: 12px; background: var(--bg); border-radius: 8px; }
+.bbody input[type=text], .bbody input[type=date], .bbody select { background: var(--surface); }
+.posten { display: flex; flex-direction: column; gap: 6px; }
+.prow { display: grid; grid-template-columns: minmax(0, 1fr) 88px 88px auto; gap: 6px; align-items: center; }
+.prow.h span { font-size: 0.72rem; color: var(--muted); }
+.prow .pv { display: flex; align-items: center; gap: 4px; }
+.prow .pv input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--pos); flex: none; }
+@media (max-width: 420px) { .prow { grid-template-columns: minmax(0, 1fr) 76px 76px auto; } }
+.diff { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.diff div span { display: block; font-size: 0.72rem; color: var(--muted); }
+.diff div b { font-family: var(--font-mono); font-weight: 500; font-variant-numeric: tabular-nums; }
+.bfoot { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.empty { color: var(--muted); font-size: 0.9rem; padding: 8px 0; }
+.lockbox { width: 100%; max-width: 340px; text-align: center; gap: 14px; }
+.lockbox input { width: 100%; font-family: var(--font-mono); text-align: center; padding: 12px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; letter-spacing: 0.1em; font-size: 1.1rem; }
+.lockbox input::placeholder { letter-spacing: normal; font-size: 1rem; font-family: var(--font-body); color: var(--muted); }
+.lockbox button.primary { padding: 12px; font-size: 1rem; }
+.lockerr { color: var(--neg); font-size: 0.9rem; min-height: 1.4em; }
+.dlg { position: fixed; inset: 0; background: rgba(14, 20, 28, 0.55); display: grid; place-items: center; padding: 16px; z-index: 20; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--surface); border-radius: 8px; padding: 10px 14px; display: flex; gap: 12px; align-items: center; font-size: 0.9rem; max-width: calc(100% - 32px); z-index: 10; }
+.toast button { background: transparent; color: inherit; border-color: currentColor; padding: 4px 10px; }
+details summary { cursor: pointer; font-weight: 600; font-size: 1.05rem; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+details summary::-webkit-details-marker { display: none; }
+details summary::after { content: "▾"; color: var(--muted); }
+details[open] summary::after { content: "▴"; }
+details[open] summary { margin-bottom: 12px; }
+input.inh { color: var(--muted); font-style: italic; }
+.field > span .src { color: var(--bre); font-size: 0.7rem; margin-left: 4px; }
+.beitrag { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 10px 12px; background: var(--bg); border-radius: 8px; }
+.beitrag div span { display: block; font-size: 0.72rem; color: var(--muted); }
+.beitrag div b { font-family: var(--font-mono); font-weight: 500; font-variant-numeric: tabular-nums; font-size: 0.95rem; }
+.beitrag div small { display: block; font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.beleg { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 10px; align-items: start; }
+.beleg img { width: 84px; height: 112px; object-fit: cover; object-position: top; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); cursor: zoom-in; }
+.beleg .bl { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 0.85rem; }
+.beleg .bl p { color: var(--muted); overflow-wrap: anywhere; }
+.busy { color: var(--pkv); font-weight: 500; }
+.scanhint { font-size: 0.85rem; color: var(--muted); }
+.viewer { width: 100%; max-width: 900px; max-height: calc(100vh - 32px); overflow: auto; }
+.vpages { display: flex; flex-direction: column; gap: 12px; }
+.vpages img { width: 100%; height: auto; border-radius: 6px; border: 1px solid var(--line); background: #fff; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap" id="app">
+  <header>
+    <h1>PKV-Kostenrechner</h1>
+    <p class="sub">Beim Öffnen ist alles leer: Lade deine Sicherung, um weiterzumachen. Änderungen werden zwischendurch verschlüsselt zwischengespeichert, dauerhaft aufgehoben sind sie erst mit »Sicherung speichern«. Trag jede Arztrechnung mit Betrag und dem Teil ein, den die PKV übernimmt – der Rechner zeigt, ob sich Einreichen oder Selbstzahlen lohnt.</p>
+  </header>
+
+  <div class="tools card">
+    <div class="yearnav">
+      <button type="button" id="prevYear" aria-label="Vorjahr">‹</button>
+      <select id="year" aria-label="Jahr"></select>
+      <button type="button" id="nextYear" aria-label="Folgejahr">›</button>
+    </div>
+    <div class="actions">
+      <button type="button" class="primary" id="scanTop">Foto / PDF einlesen</button>
+      <button type="button" id="newBillTop">+ Rechnung</button>
+      <button type="button" id="exportXlsx">Excel exportieren</button>
+      <button type="button" id="backupSave">Sicherung speichern</button>
+      <label class="filebtn" for="backupLoad">Sicherung laden</label>
+      <input type="file" id="backupLoad" accept=".json,application/json" hidden>
+      <label class="filebtn" for="xlsxLoad">Excel importieren</label>
+      <input type="file" id="xlsxLoad" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+      <button type="button" id="keysBtn" aria-expanded="false" aria-controls="keyBox">Schlüssel</button>
+    </div>
+    <div class="keybox" id="keyBox" hidden></div>
+    <small class="status" id="status">Lädt …</small>
+  </div>
+
+  <section class="card restore" id="restoreBox" hidden>
+    <p><b>Daten vom letzten Mal gefunden</b><br><span id="restoreText"></span></p>
+    <div class="rowbtns" id="restoreBtns"><button type="button" class="primary" id="restoreYes">Wiederherstellen</button><button type="button" class="ghost" id="restoreNo">Verwerfen</button></div>
+    <div class="confirm" id="restoreAsk" hidden><span>Wirklich verwerfen? Das lässt sich nicht rückgängig machen.</span><button type="button" class="danger" id="restoreDrop">Verwerfen</button><button type="button" class="ghost" id="restoreKeep">Abbrechen</button></div>
+  </section>
+
+  <div class="cols">
+    <div class="stack" id="results">
+      <section class="card" aria-live="polite">
+        <p class="verdict" id="verdict"></p>
+        <p class="verdict-sub" id="verdictSub"></p>
+        <div class="facts" id="facts"></div>
+      </section>
+
+      <section class="card">
+        <h2>Einreichen oder selbst zahlen?</h2>
+        <div class="scroll"><table class="cmp" id="cmp"></table></div>
+        <p class="foot" id="cmpFoot"></p>
+      </section>
+
+      <section class="card">
+        <h2>Erstattung im Jahresverlauf</h2>
+        <div class="legend">
+          <span><i style="background:var(--pos)"></i>Erstattungsfähig (bis Monatsende)</span>
+          <span><i style="background:var(--neg)"></i>Eigenanteil</span>
+          <span><i class="line"></i>Ab hier lohnt Einreichen</span>
+        </div>
+        <div id="chart"></div>
+        <p class="foot" id="chartFoot"></p>
+      </section>
+
+      <section class="card">
+        <h2>Nach Art</h2>
+        <div class="bars" id="bars"></div>
+      </section>
+
+      <section class="card">
+        <h2>Rechnungen im Überblick</h2>
+        <div class="scroll"><table id="btable"></table></div>
+      </section>
+
+      <section class="card">
+        <h2>Jahresübersicht <span id="pdfYear"></span> als PDF</h2>
+        <p class="sub" style="margin:0">Tarif, Beitrag mit Arbeitgeber- und Arbeitnehmeranteil, Vergleich und alle Rechnungen mit Posten – zum Ablegen oder Ausdrucken.</p>
+        <div class="rowbtns" style="align-items:center"><button type="button" class="primary" id="pdfBtn">PDF erstellen</button>
+          <label class="check" style="grid-column:auto"><input type="checkbox" id="pdfBelege" checked> Belege anhängen</label></div>
+      </section>
+
+      <section class="card">
+        <details id="yearsBox">
+          <summary><span>Alle Jahre</span></summary>
+          <div class="scroll"><table id="ytable"></table></div>
+          <p class="foot" style="margin-top:10px">Jahre ohne eigene Einträge übernehmen Beitrag, Rückerstattung, Pauschale und Selbstbehalt aus dem Vorjahr.</p>
+        </details>
+      </section>
+    </div>
+
+    <div class="stack" id="inputs">
+      <section class="card" id="setCard">
+        <h2>Dein Tarif <span id="setYear"></span></h2>
+        <div class="grid2">
+          <label class="field"><span>PKV-Beitrag gesamt / Monat<em class="src" id="src_beitragGesamt"></em></span><input type="text" class="num" inputmode="decimal" id="s_beitragGesamt" data-s="beitragGesamt" placeholder="0,00"></label>
+          <label class="field"><span>Arbeitgeberanteil / Monat<em class="src" id="src_agAnteil"></em></span><input type="text" class="num" inputmode="decimal" id="s_agAnteil" data-s="agAnteil" placeholder="Hälfte"></label>
+        </div>
+        <div class="beitrag" id="beitragBox"></div>
+        <div class="grid2">
+          <label class="field"><span>Beitragsrückerstattung, wenn du nichts einreichst<em class="src" id="src_bre"></em></span><input type="text" class="num" inputmode="decimal" id="s_bre" data-s="bre" placeholder="0,00"></label>
+          <label class="field"><span>Pauschalerstattung pro Jahr<em class="src" id="src_pauschale"></em></span><input type="text" class="num" inputmode="decimal" id="s_pauschale" data-s="pauschale" placeholder="0,00"></label>
+          <label class="field"><span>Selbstbehalt pro Jahr<em class="src" id="src_selbstbehalt"></em></span><input type="text" class="num" inputmode="decimal" id="s_selbstbehalt" data-s="selbstbehalt" placeholder="0,00"></label>
+          <label class="check"><input type="checkbox" id="s_pauschaleBedingt" data-s="pauschaleBedingt"> Pauschale entfällt, wenn ich Rechnungen einreiche <em class="src" id="src_pauschaleBedingt" style="color:var(--bre);font-size:0.75rem"></em></label>
+        </div>
+        <p class="note">Was du hier einträgst, gilt automatisch auch für die folgenden Jahre, bis du dort etwas anderes einträgst. Übernommene Werte sind kursiv. Leerst du ein Feld, gilt wieder der Wert aus dem Vorjahr. Ohne Eintrag zahlt der Arbeitgeber die Hälfte. Die Beitragsrückerstattung gibt es nur, wenn du im ganzen Jahr keine Rechnung einreichst.</p>
+      </section>
+
+      <section class="card" id="billCard">
+        <div class="tools"><h2>Rechnungen <span id="billYear"></span></h2><div class="rowbtns"><button type="button" class="primary" id="scanBill">Foto / PDF einlesen</button><button type="button" class="add" id="newBill">+ Rechnung</button></div></div>
+        <p class="scanhint" id="scanHint">Fotografier die Rechnung oder wähl ein PDF: Datum, Nummer, Arzt, Betrag und Posten werden ausgelesen und ins passende Jahr einsortiert. Prüf danach die Felder und hak an, was die PKV übernimmt.</p>
+        <input type="file" id="scanFile" accept="image/*,application/pdf" hidden>
+        <div class="bills" id="bills"></div>
+      </section>
+    </div>
+  </div>
+
+  <p class="foot">Eigenanteil = Rechnungsbetrag − Erstattung der PKV (z. B. der Posten, der nicht versichert ist). Einreichen lohnt sich, sobald die Erstattung (nach Selbstbehalt) höher ist als das, was du bei Leistungsfreiheit zurückbekommst. Die tatsächliche Rückerstattung legt deine PKV fest – trag die Werte aus deinem Tarif ein.</p>
+</div>
+
+<datalist id="arten">
+  <option value="Hausarzt"><option value="Facharzt"><option value="Zahnarzt"><option value="Zahnreinigung"><option value="Kieferorthopädie">
+  <option value="Krankenschein / AU"><option value="Apotheke / Medikamente"><option value="Labor"><option value="Physiotherapie"><option value="Heilpraktiker">
+  <option value="Psychotherapie"><option value="Krankenhaus"><option value="Brille / Kontaktlinsen"><option value="Hilfsmittel"><option value="Vorsorge / Impfung"><option value="Sonstiges">
+</datalist>
+
+<div class="dlg" id="codeDlg" hidden>
+  <form class="lockbox card" id="dlgForm" autocomplete="off">
+    <h2 id="dlgTitle">Sicherung</h2>
+    <p class="sub" id="dlgText"></p>
+    <input type="password" id="dlgCode1" placeholder="Sicherungscode" aria-label="Sicherungscode" autocomplete="off">
+    <input type="password" id="dlgCode2" placeholder="Sicherungscode wiederholen" aria-label="Sicherungscode wiederholen" autocomplete="off" hidden>
+    <button type="submit" id="dlgOk" class="primary">OK</button>
+    <button type="button" id="dlgCancel" class="ghost">Abbrechen</button>
+    <p class="lockerr" id="dlgErr" aria-live="polite"></p>
+  </form>
+</div>
+<div class="dlg" id="belegDlg" hidden>
+  <div class="card viewer" role="dialog" aria-modal="true" aria-labelledby="belegTitle">
+    <div class="tools"><h2 id="belegTitle">Beleg</h2><button type="button" id="belegClose">Schließen</button></div>
+    <div class="vpages" id="belegPages"></div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden><span id="toastText"></span><button type="button" id="undo">Rückgängig</button></div>
+
+<script>
+var Y0 = 2025, Y1 = 2076;
+var MON = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+var STATUS = { offen: "Noch offen", eingereicht: "Eingereicht", selbst: "Selbst bezahlt" };
+var nf0 = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
+var nf2 = new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function eur(n) { return (n < -0.004 ? "−" : "") + nf2.format(Math.abs(n)) + " €"; }
+function eur0(n) { return (n < -0.5 ? "−" : "") + nf0.format(Math.abs(Math.round(n))) + " €"; }
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+function uid() { return Math.random().toString(36).slice(2, 9); }
+function clone(o) { return JSON.parse(JSON.stringify(o)); }
+function parseNum(s) {
+  s = String(s).trim().replace(/[€\s]/g, "");
+  if (!s) return null;
+  if (s.indexOf(",") >= 0) s = s.replace(/\./g, "").replace(",", ".");
+  else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "");
+  var v = parseFloat(s);
+  return isNaN(v) ? null : v;
+}
+function fmtIn(v) { return v == null ? "" : nf2.format(v).replace(/\./g, ""); }
+function r2(v) { return Math.round(v * 100) / 100; }
+function sum(a) { return a.reduce(function (x, y) { return x + y; }, 0); }
+function fmtDate(iso) { if (!iso) return ""; var p = iso.split("-"); return p.length === 3 ? p[2] + "." + p[1] + "." + p[0] : iso; }
+
+/* ---------- Datenmodell ---------- */
+/* Tarifwerte: null = aus dem Vorjahr übernehmen. Jeder Wert gilt weiter, bis ein späteres Jahr einen eigenen hat. */
+var SKEYS = ["beitragGesamt", "agAnteil", "bre", "pauschale", "pauschaleBedingt", "selbstbehalt"];
+function defaultSettings() { var o = {}; SKEYS.forEach(function (k) { o[k] = null; }); return o; }
+function defaultYear() { return { settings: defaultSettings(), bills: [] }; }
+function newBill() { return { id: uid(), datum: "", nr: "", von: "", art: "", zweck: "", status: "offen", betrag: null, erst: null, posten: [], beleg: null }; }
+function newPosten() { return { id: uid(), name: "", betrag: null, erst: null }; }
+var saved = {};
+var belege = {};  // Rechnungs-ID -> [JPEG-Seiten als Base64]; liegen verschlüsselt in Zwischenspeicher und Sicherung
+var busy = {};    // Rechnungs-ID -> Hinweis, solange ausgelesen wird
+function derive(y) { return saved[y] || defaultYear(); }
+function ownSettings(y) { if (y === year && cur) return cur.settings; return saved[y] ? saved[y].settings : null; }
+function effSettings(y) {
+  var o = defaultSettings(), src = {};
+  for (var yy = Y0; yy <= y; yy++) {
+    var s = ownSettings(yy); if (!s) continue;
+    SKEYS.forEach(function (k) { if (s[k] != null) { o[k] = s[k]; src[k] = yy; } });
+  }
+  o.src = src;
+  return o;
+}
+function normYear(d) {
+  var s = d.settings || {};
+  if (s.beitrag != null && s.beitragGesamt == null) { s.beitragGesamt = r2(s.beitrag * 2); } /* ältere Version: nur eigener Anteil */
+  delete s.beitrag;
+  d.settings = Object.assign(defaultSettings(), s);
+  d.bills = (d.bills || []).map(function (b) { b = Object.assign(newBill(), b); b.posten = (b.posten || []).map(function (p) { return Object.assign(newPosten(), p); }); return b; });
+  return d;
+}
+
+/* ---------- Rechnen ---------- */
+function billSums(b) {
+  if (b.posten && b.posten.length) {
+    var B = sum(b.posten.map(function (p) { return p.betrag || 0; })), E = sum(b.posten.map(function (p) { return p.erst || 0; }));
+    return { betrag: B, erst: E, own: B - E };
+  }
+  var b1 = b.betrag || 0, e1 = b.erst || 0;
+  return { betrag: b1, erst: e1, own: b1 - e1 };
+}
+function compute(d, y) {
+  var s = effSettings(y), SB = s.selbstbehalt || 0, P = s.pauschale || 0, B = s.bre || 0, Pc = !!s.pauschaleBedingt;
+  var R = 0, E = 0, Esub = 0, anySub = false, nOpen = 0, cats = {}, mE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], mR = mE.slice(), undated = 0;
+  d.bills.forEach(function (b) {
+    var x = billSums(b); R += x.betrag; E += x.erst;
+    if (b.status === "eingereicht") { Esub += x.erst; anySub = true; }
+    if (b.status === "offen") nOpen++;
+    var k = (b.art || "").trim() || "Ohne Art";
+    cats[k] = cats[k] || { betrag: 0, erst: 0 }; cats[k].betrag += x.betrag; cats[k].erst += x.erst;
+    var m = b.datum ? +b.datum.split("-")[1] - 1 : -1;
+    if (m >= 0 && m < 12) { mE[m] += x.erst; mR[m] += x.betrag; } else undated++;
+  });
+  var keep = B + (Pc ? P : 0);                 // was du bei Einreichen verlierst
+  var threshold = keep + SB;                   // so viel Erstattung braucht es, bis Einreichen lohnt
+  var effAll = Math.max(0, E - SB);
+  var costAll = R - effAll - (Pc ? 0 : P);
+  var costNone = R - B - P;
+  var costIst = anySub ? R - Math.max(0, Esub - SB) - (Pc ? 0 : P) : costNone;
+  var G = s.beitragGesamt || 0, AG = s.agAnteil != null ? s.agAnteil : G / 2, AN = G - AG;
+  var beitraege = AN * 12;
+  return { G: G, AG: AG, AN: AN, R: R, E: E, own: R - E, Esub: Esub, anySub: anySub, nOpen: nOpen, SB: SB, P: P, B: B, Pc: Pc, keep: keep, threshold: threshold,
+    effAll: effAll, costAll: costAll, costNone: costNone, costIst: costIst, beitraege: beitraege,
+    better: d.bills.length === 0 || costNone <= costAll ? "selbst" : "pkv", cats: cats, mE: mE, mR: mR, undated: undated, n: d.bills.length };
+}
+
+/* ---------- Anzeige: Ergebnis ---------- */
+var year = Math.min(Math.max(new Date().getFullYear(), Y0), Y1), cur = null, openBills = {};
+function fact(label, val, cls) { return '<div class="fact"><span>' + label + '</span><b class="' + (cls || "") + '">' + val + "</b></div>"; }
+function renderResults() {
+  var r = compute(cur, year), v = document.getElementById("verdict"), vs = document.getElementById("verdictSub");
+  v.className = "verdict";
+  if (!r.n) {
+    v.textContent = "Noch keine Rechnungen für " + year + ".";
+    vs.textContent = r.keep > 0 ? "Wenn du nichts einreichst, bekommst du " + eur(r.B + r.P) + " zurück (Rückerstattung + Pauschale)." : "Trag zuerst deinen Tarif ein, dann die erste Rechnung.";
+  } else if (r.better === "selbst") {
+    v.classList.add("v-self");
+    v.textContent = "Selbst zahlen lohnt sich – " + eur(r.costAll - r.costNone) + " günstiger als Einreichen.";
+    vs.textContent = "Einreichen lohnt sich erst, wenn die PKV mehr als " + eur(r.threshold) + " erstattet. Bisher sind " + eur(r.E) + " erstattungsfähig, also noch " + eur(r.threshold - r.E) + " Luft." +
+      (r.anySub ? " Achtung: Du hast schon Rechnungen eingereicht – damit entfällt die Rückerstattung." : "");
+  } else {
+    v.classList.add("v-pkv");
+    v.textContent = "Einreichen lohnt sich – " + eur(r.costNone - r.costAll) + " günstiger als selbst zahlen.";
+    vs.textContent = "Die PKV würde " + eur(r.effAll) + " übernehmen, bei Leistungsfreiheit bekämst du nur " + eur(r.keep) + (r.Pc ? " (Rückerstattung + Pauschale)." : " Rückerstattung.") +
+      (r.nOpen ? " " + r.nOpen + (r.nOpen === 1 ? " Rechnung ist" : " Rechnungen sind") + " noch nicht eingereicht." : "");
+  }
+  var ist = r.beitraege + r.costIst;
+  document.getElementById("facts").innerHTML =
+    fact("Rechnungen", eur(r.R)) +
+    fact("Erstattungsfähig", eur(r.E), "c-pos") +
+    fact("Eigenanteil (nicht versichert)", eur(r.own), "c-neg") +
+    fact("Rückerstattung + Pauschale", eur(r.B + r.P), "c-bre") +
+    fact("PKV-Beitrag gesamt / Jahr", eur(r.G * 12)) +
+    fact("davon Arbeitgeber", eur(r.AG * 12)) +
+    fact("davon du", eur(r.beitraege)) +
+    fact("Deine Gesamtkosten (Stand)", eur(ist), r.anySub ? "c-pkv" : "c-self");
+
+  var best = r.better;
+  function row(label, a, b, cls) {
+    return "<tr" + (cls ? ' class="' + cls + '"' : "") + "><td>" + label + '</td><td class="num' + (best === "pkv" ? " best" : "") + '">' + a + '</td><td class="num' + (best === "selbst" ? " best" : "") + '">' + b + "</td></tr>";
+  }
+  var dash = "–";
+  document.getElementById("cmp").innerHTML =
+    '<tr><th></th><th class="' + (best === "pkv" ? "best" : "") + '">Alles einreichen</th><th class="' + (best === "selbst" ? "best" : "") + '">Nichts einreichen</th></tr>' +
+    row("Rechnungen gesamt", eur(r.R), eur(r.R)) +
+    row("− Erstattung der PKV" + (r.SB ? " (nach " + eur0(r.SB) + " Selbstbehalt)" : ""), eur(-r.effAll), dash) +
+    row("− Beitragsrückerstattung", dash, eur(-r.B)) +
+    row("− Pauschalerstattung", r.Pc ? dash : eur(-r.P), eur(-r.P)) +
+    row("= Krankheitskosten", eur(r.costAll), eur(r.costNone), "total") +
+    row("+ Dein Beitragsanteil (12 × " + eur(r.AN) + ")", eur(r.beitraege), eur(r.beitraege)) +
+    row("= Gesamtkosten im Jahr", eur(r.beitraege + r.costAll), eur(r.beitraege + r.costNone), "total");
+  document.getElementById("cmpFoot").textContent = "Beitrag: " + eur(r.G) + " im Monat gesamt, davon zahlt der Arbeitgeber " + eur(r.AG) + " und du " + eur(r.AN) + ". Aktueller Stand nach deinen Einträgen: " + eur(ist) + " im Jahr" +
+    (r.anySub ? " – mit eingereichten Rechnungen (" + eur(r.Esub) + " Erstattung)." : " – bisher ist nichts eingereicht.") + " Die günstigere Variante ist hinterlegt.";
+
+  drawChart(r);
+
+  var cats = Object.keys(r.cats).map(function (k) { return { name: k, b: r.cats[k].betrag, e: r.cats[k].erst }; }).sort(function (a, b) { return b.b - a.b; });
+  var mx = Math.max.apply(null, cats.map(function (c) { return c.b; }).concat([1]));
+  document.getElementById("bars").innerHTML = cats.length ? cats.map(function (c) {
+    var we = Math.max(0, Math.min(c.e, c.b)) / mx * 100, wo = Math.max(0, c.b - c.e) / mx * 100;
+    return '<div class="bar-row"><span>' + esc(c.name) + "</span><b>" + eur(c.b) + ' <small class="c-neg">(' + eur(c.b - c.e) + ' selbst)</small></b><div class="bar"><i style="width:' + we + '%;background:var(--pos)"></i><i style="width:' + wo + '%;background:var(--neg)"></i></div></div>';
+  }).join("") : '<p class="empty">Noch keine Rechnungen.</p>';
+
+  var bl = cur.bills.slice().sort(function (a, b) { return (a.datum || "9999").localeCompare(b.datum || "9999"); });
+  document.getElementById("btable").innerHTML = bl.length ?
+    '<tr><th>Datum</th><th class="l">Rechnungssteller</th><th class="l">Art</th><th>Betrag</th><th>Erstattung</th><th>Eigenanteil</th><th class="l">Status</th></tr>' +
+    bl.map(function (b) { var x = billSums(b); return "<tr><td class=\"num\">" + (fmtDate(b.datum) || "–") + '</td><td class="l">' + esc(b.von || "–") + '</td><td class="l">' + esc(b.art || "–") + '</td><td class="num">' + eur(x.betrag) + '</td><td class="num c-pos">' + eur(x.erst) + '</td><td class="num c-neg">' + eur(x.own) + '</td><td class="l"><span class="chip s-' + b.status + '">' + STATUS[b.status] + "</span></td></tr>"; }).join("") +
+    '<tr class="total"><td>Summe</td><td></td><td></td><td class="num">' + eur(r.R) + '</td><td class="num">' + eur(r.E) + '</td><td class="num">' + eur(r.own) + "</td><td></td></tr>"
+    : '<tr><td class="empty">Noch keine Rechnungen für ' + year + ".</td></tr>";
+
+  var ys = Object.keys(saved).map(Number); if (ys.indexOf(year) < 0) ys.push(year); ys.sort();
+  document.getElementById("ytable").innerHTML = '<tr><th>Jahr</th><th>Rechnungen</th><th>Erstattungsfähig</th><th>Eigenanteil</th><th>Einreichen</th><th>Selbst zahlen</th><th class="l">Besser</th><th>Gesamt (Stand)</th><th></th></tr>' +
+    ys.map(function (y) {
+      var q = compute(y === year ? cur : derive(y), y);
+      return '<tr><td><button type="button" class="ghost" data-goto="' + y + '">' + y + '</button></td><td class="num">' + eur(q.R) + '</td><td class="num">' + eur(q.E) + '</td><td class="num">' + eur(q.own) + '</td><td class="num">' + eur(q.costAll) + '</td><td class="num">' + eur(q.costNone) + '</td><td class="l ' + (q.better === "pkv" ? "c-pkv" : "c-self") + '">' + (q.better === "pkv" ? "Einreichen" : "Selbst zahlen") + '</td><td class="num">' + eur(q.beitraege + q.costIst) + '</td><td><button type="button" class="ghost" data-pdf="' + y + '">PDF</button></td></tr>';
+    }).join("");
+}
+function drawChart(r) {
+  var el = document.getElementById("chart"), W = 600, H = 230, L = 58, Rr = 10, T = 14, Bt = 26;
+  var cumE = [], cumO = [], a = 0, o = 0;
+  for (var i = 0; i < 12; i++) { a += r.mE[i]; o += r.mR[i] - r.mE[i]; cumE.push(a); cumO.push(Math.max(0, o)); }
+  var max = Math.max(r.threshold, cumE[11] + cumO[11], 10) * 1.1;
+  var step = Math.pow(10, Math.floor(Math.log10(max / 4))), nice = [1, 2, 2.5, 5, 10].map(function (k) { return k * step; }).find(function (k) { return max / k <= 5; }) || step * 10;
+  var top = Math.ceil(max / nice) * nice, ih = H - T - Bt, iw = W - L - Rr, bw = iw / 12;
+  function Y(v) { return T + ih - v / top * ih; }
+  var s = '<svg class="chart" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Erstattungsfähige Summe je Monat im Vergleich zur Schwelle">';
+  for (var g = 0; g <= top + 0.001; g += nice) s += '<line class="grid" x1="' + L + '" x2="' + (W - Rr) + '" y1="' + Y(g) + '" y2="' + Y(g) + '"/><text x="' + (L - 6) + '" y="' + (Y(g) + 4) + '" text-anchor="end">' + nf0.format(g) + "</text>";
+  for (i = 0; i < 12; i++) {
+    var x = L + i * bw + bw * 0.18, w = bw * 0.64;
+    if (cumE[i] > 0) s += '<rect class="b-e" x="' + x + '" y="' + Y(cumE[i]) + '" width="' + w + '" height="' + (Y(0) - Y(cumE[i])) + '"/>';
+    if (cumO[i] > 0) s += '<rect class="b-o" x="' + x + '" y="' + Y(cumE[i] + cumO[i]) + '" width="' + w + '" height="' + (Y(cumE[i]) - Y(cumE[i] + cumO[i])) + '"/>';
+    s += '<text x="' + (L + i * bw + bw / 2) + '" y="' + (H - 8) + '" text-anchor="middle">' + MON[i] + "</text>";
+  }
+  if (r.threshold > 0) s += '<line class="th" x1="' + L + '" x2="' + (W - Rr) + '" y1="' + Y(r.threshold) + '" y2="' + Y(r.threshold) + '"/><text class="thl" x="' + (W - Rr) + '" y="' + (Y(r.threshold) - 5) + '" text-anchor="end">' + eur0(r.threshold) + "</text>";
+  el.innerHTML = s + "</svg>";
+  document.getElementById("chartFoot").textContent = "Grüne Säulen: was die PKV bis zum jeweiligen Monat erstatten würde, rot darüber dein Eigenanteil. Liegt Grün über der Linie, lohnt Einreichen." +
+    (r.undated ? " " + r.undated + (r.undated === 1 ? " Rechnung hat" : " Rechnungen haben") + " kein Datum und fehlen im Verlauf." : "");
+}
+
+/* ---------- Anzeige: Eingaben ---------- */
+var billsEl = document.getElementById("bills");
+var NUMKEYS = ["beitragGesamt", "agAnteil", "bre", "pauschale", "selbstbehalt"];
+function renderSettings() {
+  var own = cur.settings, eff = effSettings(year);
+  NUMKEYS.forEach(function (k) {
+    var el = document.getElementById("s_" + k), inh = own[k] == null && eff[k] != null;
+    if (document.activeElement !== el) el.value = fmtIn(eff[k]);
+    el.classList.toggle("inh", inh);
+    document.getElementById("src_" + k).textContent = inh ? " · aus " + eff.src[k] : "";
+  });
+  var cb = document.getElementById("s_pauschaleBedingt");
+  cb.checked = !!eff.pauschaleBedingt;
+  document.getElementById("src_pauschaleBedingt").textContent = own.pauschaleBedingt == null && eff.src.pauschaleBedingt != null ? "(aus " + eff.src.pauschaleBedingt + ")" : "";
+  var G = eff.beitragGesamt || 0;
+  document.getElementById("s_agAnteil").placeholder = G ? fmtIn(G / 2) + " (Hälfte)" : "Hälfte";
+  renderBeitrag();
+  document.getElementById("setYear").textContent = year; document.getElementById("billYear").textContent = year; document.getElementById("pdfYear").textContent = year;
+}
+function renderBeitrag() {
+  var r = compute(cur, year);
+  function cell(l, m, cls) { return "<div><span>" + l + '</span><b class="' + (cls || "") + '">' + eur(m) + "</b><small>" + eur(m * 12) + " / Jahr</small></div>"; }
+  document.getElementById("beitragBox").innerHTML = cell("Gesamtbeitrag", r.G) + cell("Arbeitgeber", r.AG) + cell("Dein Anteil", r.AN, "c-pkv");
+}
+function billHeadHtml(b) {
+  var x = billSums(b), t = [b.von, b.art].filter(Boolean).join(" · ") || "Neue Rechnung";
+  var m = [fmtDate(b.datum), b.nr ? "Nr. " + b.nr : "", b.zweck, belege[b.id] ? "Beleg" : ""].filter(Boolean).join(" · ") || "Datum, Nummer und Zweck fehlen noch";
+  if (busy[b.id]) return '<span class="t">' + esc(t) + '</span><span class="a">' + eur(x.betrag) + '</span><span class="m busy">' + esc(busy[b.id]) + '</span><span class="d"></span>';
+  return '<span class="t">' + esc(t) + '</span><span class="a">' + eur(x.betrag) + '</span><span class="m">' + esc(m) + '</span><span class="d"><span class="chip s-' + b.status + '">' + STATUS[b.status] + "</span></span>";
+}
+function postenHtml(b) {
+  if (!b.posten.length) return "";
+  return '<div class="prow h"><span>Posten</span><span>Betrag</span><span>Erstattung</span><span></span></div>' + b.posten.map(function (p) {
+    var full = p.betrag != null && p.erst != null && Math.abs(p.betrag - p.erst) < 0.005 && p.betrag !== 0;
+    return '<div class="prow" data-pid="' + p.id + '"><input type="text" id="pn_' + p.id + '" data-p="name" value="' + esc(p.name) + '" placeholder="z. B. Politur" aria-label="Posten">' +
+      '<input type="text" class="num" inputmode="decimal" id="pb_' + p.id + '" data-p="betrag" value="' + fmtIn(p.betrag) + '" placeholder="0,00" aria-label="Betrag">' +
+      '<span class="pv"><input type="checkbox" id="pf_' + p.id + '" data-p="full" ' + (full ? "checked" : "") + ' aria-label="Voll erstattet" title="Voll erstattet"><input type="text" class="num" inputmode="decimal" id="pe_' + p.id + '" data-p="erst" value="' + fmtIn(p.erst) + '" placeholder="0,00" aria-label="Erstattung"></span>' +
+      '<button type="button" class="ghost" data-act="pdel" aria-label="Posten löschen">✕</button></div>';
+  }).join("");
+}
+function billBodyHtml(b) {
+  var hasP = b.posten.length > 0, x = billSums(b), pg = belege[b.id];
+  var bel = pg && pg.length
+    ? '<div class="beleg"><img src="data:image/jpeg;base64,' + pg[0] + '" alt="Beleg, Seite 1" data-act="bview"><div class="bl"><p>' + esc((b.beleg && b.beleg.name) || "Beleg") + (pg.length > 1 ? " · " + pg.length + " Seiten" : "") + '</p><div class="rowbtns"><button type="button" data-act="bview">Ansehen</button><button type="button" data-act="bread"' + (busy[b.id] ? " disabled" : "") + '>Neu auslesen</button><button type="button" data-act="battach">Ersetzen</button><button type="button" class="ghost danger" data-act="bremove">Entfernen</button></div></div></div>'
+    : '<button type="button" class="add" data-act="battach">Foto / PDF anhängen und auslesen</button>';
+  return bel + '<div class="grid2">' +
+    '<label class="field"><span>Rechnungsdatum</span><input type="date" id="bd_' + b.id + '" data-f="datum" value="' + esc(b.datum) + '"></label>' +
+    '<label class="field"><span>Rechnungsnummer</span><input type="text" id="bn_' + b.id + '" data-f="nr" value="' + esc(b.nr) + '" placeholder="z. B. 2026-0418"></label>' +
+    '<label class="field"><span>Rechnungssteller</span><input type="text" id="bv_' + b.id + '" data-f="von" value="' + esc(b.von) + '" placeholder="z. B. Zahnarztpraxis Dr. …"></label>' +
+    '<label class="field"><span>Art</span><input type="text" id="ba_' + b.id + '" data-f="art" list="arten" value="' + esc(b.art) + '" placeholder="Zahnarzt, Hausarzt …"></label>' +
+    '<label class="field wide"><span>Wofür</span><input type="text" id="bz_' + b.id + '" data-f="zweck" value="' + esc(b.zweck) + '" placeholder="z. B. Professionelle Zahnreinigung"></label>' +
+    '<label class="field"><span>Rechnungsbetrag' + (hasP ? " (Summe Posten)" : "") + '</span><input type="text" class="num" inputmode="decimal" id="bb_' + b.id + '" data-f="betrag" value="' + fmtIn(hasP ? x.betrag : b.betrag) + '" placeholder="0,00"' + (hasP ? " readonly" : "") + "></label>" +
+    '<label class="field"><span>Erstattung der PKV' + (hasP ? " (Summe Posten)" : "") + '</span><input type="text" class="num" inputmode="decimal" id="be_' + b.id + '" data-f="erst" value="' + fmtIn(hasP ? x.erst : b.erst) + '" placeholder="0,00"' + (hasP ? " readonly" : "") + "></label>" +
+    '<label class="field wide"><span>Status</span><select id="bs_' + b.id + '" data-f="status">' + Object.keys(STATUS).map(function (k) { return '<option value="' + k + '"' + (b.status === k ? " selected" : "") + ">" + STATUS[k] + "</option>"; }).join("") + "</select></label>" +
+    "</div>" +
+    '<div class="posten">' + postenHtml(b) + '<div class="rowbtns"><button type="button" class="add" data-act="padd">+ Posten aufschlüsseln</button>' + (hasP ? '<button type="button" data-act="pfull">Alle Posten voll erstattet</button><button type="button" class="ghost" data-act="pnone">Alle auf 0</button>' : "") + "</div></div>" +
+    '<div class="diff"><div><span>Rechnung</span><b data-o="betrag">' + eur(x.betrag) + '</b></div><div><span>Erstattung</span><b class="c-pos" data-o="erst">' + eur(x.erst) + '</b></div><div><span>Eigenanteil</span><b class="c-neg" data-o="own">' + eur(x.own) + "</b></div></div>" +
+    '<div class="bfoot"><button type="button" class="ghost" data-act="close">Fertig</button><button type="button" class="ghost danger" data-act="del">Rechnung löschen</button></div>';
+}
+function billHtml(b) {
+  var open = !!openBills[b.id];
+  return '<div class="bill" data-bid="' + b.id + '"><button type="button" class="bhead" data-act="toggle" aria-expanded="' + open + '">' + billHeadHtml(b) + "</button>" +
+    (open ? '<div class="bbody">' + billBodyHtml(b) + "</div>" : "") + "</div>";
+}
+function renderBills() {
+  billsEl.innerHTML = cur.bills.length ? cur.bills.map(billHtml).join("") : '<p class="empty">Noch keine Rechnungen für ' + year + ". Tippe auf »+ Rechnung«.</p>";
+}
+function renderInputs() { renderSettings(); renderBills(); }
+function findBill(id) { return cur.bills.find(function (b) { return b.id === id; }); }
+function refreshBill(b) {
+  var el = billsEl.querySelector('.bill[data-bid="' + b.id + '"]'); if (!el) return;
+  el.querySelector(".bhead").innerHTML = billHeadHtml(b);
+  var x = billSums(b);
+  el.querySelectorAll("[data-o]").forEach(function (o) { o.textContent = eur(x[o.dataset.o]); });
+  if (b.posten.length) {
+    var bb = el.querySelector('[data-f="betrag"]'), be = el.querySelector('[data-f="erst"]');
+    if (bb) bb.value = fmtIn(x.betrag); if (be) be.value = fmtIn(x.erst);
+  }
+}
+function touch() { if (!saved[year]) saved[year] = cur; scheduleSave(); }
+
+document.getElementById("setCard").addEventListener("input", function (e) {
+  var k = e.target.dataset.s; if (!k) return;
+  if (k === "pauschaleBedingt") cur.settings[k] = e.target.checked; else cur.settings[k] = parseNum(e.target.value);
+  e.target.classList.remove("inh"); var src = document.getElementById("src_" + k); if (src) src.textContent = "";
+  touch(); renderBeitrag(); renderResults();
+});
+document.getElementById("setCard").addEventListener("change", function (e) { if (e.target.dataset.s && e.target.dataset.s !== "pauschaleBedingt") renderSettings(); });
+
+billsEl.addEventListener("input", function (e) {
+  var be = e.target.closest(".bill"); if (!be) return;
+  var b = findBill(be.dataset.bid); if (!b) return;
+  var f = e.target.dataset.f, pf = e.target.dataset.p;
+  if (f) {
+    if (f === "betrag" || f === "erst") { if (e.target.readOnly) return; b[f] = parseNum(e.target.value); }
+    else b[f] = e.target.value;
+  } else if (pf) {
+    var pr = e.target.closest(".prow"), p = b.posten.find(function (x) { return x.id === pr.dataset.pid; }); if (!p) return;
+    if (pf === "name") p.name = e.target.value;
+    else if (pf === "full") { p.erst = e.target.checked ? p.betrag : 0; pr.querySelector('[data-p="erst"]').value = fmtIn(p.erst); }
+    else {
+      var wasFull = pr.querySelector('[data-p="full"]').checked;
+      p[pf] = parseNum(e.target.value);
+      if (pf === "betrag" && wasFull) { p.erst = p.betrag; pr.querySelector('[data-p="erst"]').value = fmtIn(p.erst); }
+      pr.querySelector('[data-p="full"]').checked = p.betrag != null && p.erst != null && p.betrag !== 0 && Math.abs(p.betrag - p.erst) < 0.005;
+    }
+  } else return;
+  touch(); refreshBill(b); renderResults();
+});
+billsEl.addEventListener("change", function (e) {
+  if (e.target.dataset.f === "status") { var b = findBill(e.target.closest(".bill").dataset.bid); if (b) { b.status = e.target.value; touch(); refreshBill(b); renderResults(); } }
+  if (e.target.classList.contains("num") && !e.target.readOnly) { var v = parseNum(e.target.value); e.target.value = fmtIn(v); }
+});
+billsEl.addEventListener("click", function (e) {
+  var btn = e.target.closest("[data-act]"); if (!btn || btn.disabled) return;
+  var be = btn.closest(".bill"), b = be && findBill(be.dataset.bid); if (!b) return;
+  var act = btn.dataset.act;
+  if (act === "bview") { showBeleg(b); return; }
+  if (act === "battach") { startScan(b.id); return; }
+  if (act === "bread") { readBill(b, null); return; }
+  if (act === "bremove") {
+    var oldPg = belege[b.id], oldMeta = b.beleg;
+    delete belege[b.id]; b.beleg = null; touch(); renderBills(); renderResults();
+    toast("Beleg entfernt", function () { belege[b.id] = oldPg; b.beleg = oldMeta; }); return;
+  }
+  if (act === "pfull" || act === "pnone") {
+    b.posten.forEach(function (p) { p.erst = act === "pfull" ? p.betrag : 0; });
+    touch(); renderBills(); renderResults(); return;
+  }
+  if (act === "toggle" || act === "close") { openBills[b.id] = act === "toggle" ? !openBills[b.id] : false; renderBills(); if (act === "close") { var h = billsEl.querySelector('.bill[data-bid="' + b.id + '"] .bhead'); if (h) h.focus(); } return; }
+  if (act === "padd") {
+    if (!b.posten.length && (b.betrag || b.erst)) { var p0 = newPosten(); p0.name = b.zweck || "Gesamt"; p0.betrag = b.betrag; p0.erst = b.erst; b.posten.push(p0); }
+    var p = newPosten(); b.posten.push(p); touch(); renderBills(); renderResults();
+    var el = document.getElementById("pn_" + p.id); if (el) el.focus(); return;
+  }
+  if (act === "pdel") {
+    var pid = btn.closest(".prow").dataset.pid, pi = b.posten.findIndex(function (x) { return x.id === pid; });
+    var gone = b.posten.splice(pi, 1)[0];
+    if (!b.posten.length) { b.betrag = gone.betrag; b.erst = gone.erst; }
+    touch(); renderBills(); renderResults();
+    toast("Posten gelöscht", function () { b.posten.splice(pi, 0, gone); }); return;
+  }
+  if (act === "del") {
+    var bi = cur.bills.indexOf(b); cur.bills.splice(bi, 1); touch(); renderBills(); renderResults();
+    toast("Rechnung gelöscht", function () { cur.bills.splice(bi, 0, b); });
+  }
+});
+function addBill() {
+  var b = newBill(), t = new Date();
+  if (t.getFullYear() === year) b.datum = t.getFullYear() + "-" + String(t.getMonth() + 1).padStart(2, "0") + "-" + String(t.getDate()).padStart(2, "0");
+  cur.bills.unshift(b); openBills[b.id] = true; touch(); renderBills(); renderResults();
+  var el = document.getElementById("bv_" + b.id); if (el) { el.scrollIntoView({ block: "center" }); el.focus(); }
+}
+/* ---------- Foto / PDF einlesen ---------- */
+var PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+var scanInput = document.getElementById("scanFile"), scanTarget = null;
+var ARTEN = Array.prototype.map.call(document.querySelectorAll("#arten option"), function (o) { return o.value; });
+function startScan(billId) { scanTarget = billId; scanInput.value = ""; scanInput.click(); }
+document.getElementById("scanTop").addEventListener("click", function () { startScan(null); });
+document.getElementById("scanBill").addEventListener("click", function () { startScan(null); });
+scanInput.addEventListener("change", function () {
+  var f = scanInput.files && scanInput.files[0]; if (!f) return;
+  var target = scanTarget; scanTarget = null; scanInput.value = "";
+  var b = target && findBill(target);
+  if (!b) { b = newBill(); cur.bills.unshift(b); openBills[b.id] = true; touch(); }
+  readBill(b, f);
+});
+function loadScript(src) {
+  return new Promise(function (res, rej) { var s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = function () { rej(new Error("script")); }; document.head.appendChild(s); });
+}
+async function pdfLib() {
+  if (window.pdfjsLib) return window.pdfjsLib;
+  await loadScript(PDFJS + "pdf.worker.min.js"); /* läuft dann im Seiten-Thread, kein eigener Worker nötig */
+  await loadScript(PDFJS + "pdf.min.js");
+  return window.pdfjsLib;
+}
+function canvasBlob(c, q) { return new Promise(function (res) { c.toBlob(function (b) { res(b); }, "image/jpeg", q); }); }
+function scaled(src, w, h, max) {
+  var k = Math.min(1, max / Math.max(w, h)), c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+  var x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.drawImage(src, 0, 0, c.width, c.height);
+  return c;
+}
+async function blobB64(blob) { return b64(await blob.arrayBuffer()); }
+/* Ablage-Version: klein genug für den Zwischenspeicher (unter ~135 KB pro Seite) */
+async function storeVersion(src, w, h) {
+  var max = 1400;
+  for (var t = 0; t < 4; t++) {
+    var c = scaled(src, w, h, max), qs = [0.72, 0.6, 0.5, 0.42];
+    for (var i = 0; i < qs.length; i++) { var bl = await canvasBlob(c, qs[i]); if (bl && bl.size < 135000) return blobB64(bl); }
+    max = Math.round(max * 0.8);
+  }
+  return blobB64(await canvasBlob(scaled(src, w, h, 700), 0.4));
+}
+async function readVersion(src, w, h, maxBytes) {
+  var c = scaled(src, w, h, 2000), q = 0.85, bl = await canvasBlob(c, q);
+  while (bl && maxBytes && bl.size > maxBytes && q > 0.4) { q -= 0.15; bl = await canvasBlob(c, q); }
+  return bl;
+}
+async function loadImage(file) {
+  if (window.createImageBitmap) { try { var bm = await createImageBitmap(file, { imageOrientation: "from-image" }); return { src: bm, w: bm.width, h: bm.height }; } catch (e) {} }
+  return new Promise(function (res, rej) {
+    var url = URL.createObjectURL(file), im = new Image();
+    im.onload = function () { res({ src: im, w: im.naturalWidth, h: im.naturalHeight }); setTimeout(function () { URL.revokeObjectURL(url); }, 1000); };
+    im.onerror = function () { rej(new Error("bild")); }; im.src = url;
+  });
+}
+async function filePages(file, maxBytes) {
+  var out = { store: [], read: [], text: "" };
+  var isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+  if (isPdf) {
+    var lib = await pdfLib(), doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false }).promise;
+    for (var i = 1; i <= Math.min(doc.numPages, 3); i++) {
+      var page = await doc.getPage(i), tc = await page.getTextContent();
+      out.text += tc.items.map(function (t) { return t.str; }).join(" ") + "\n";
+      var v1 = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: Math.min(3, 2000 / v1.width) });
+      var c = document.createElement("canvas"); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+      var x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+      await page.render({ canvasContext: x, viewport: vp }).promise;
+      out.store.push(await storeVersion(c, c.width, c.height));
+      out.read.push(await readVersion(c, c.width, c.height, maxBytes));
+    }
+  } else {
+    var im = await loadImage(file);
+    out.store.push(await storeVersion(im.src, im.w, im.h));
+    out.read.push(await readVersion(im.src, im.w, im.h, maxBytes));
+  }
+  return out;
+}
+var sampleP = null;
+function getSample() { if (!sampleP) sampleP = (window.claude && window.claude.use ? window.claude.use("sample") : Promise.resolve(null)).catch(function () { return null; }); return sampleP; }
+function extractPrompt(text) {
+  return "Du liest eine deutsche Arzt-, Zahnarzt- oder Apothekenrechnung für einen Privatpatienten (GOÄ/GOZ). Die Bilder zeigen die Seiten der Rechnung." +
+    (text.trim() ? "\n\nText aus dem PDF (kann Lücken haben):\n" + text.slice(0, 15000) : "") +
+    "\n\nGib NUR ein JSON-Objekt zurück, ohne weiteren Text, in dieser Form:\n" +
+    '{"datum":"JJJJ-MM-TT oder null","nr":"Rechnungsnummer oder null","von":"Rechnungssteller (Praxis/Arzt) oder null","art":"eine aus der Liste oder null","zweck":"kurz, wofür (max. 6 Wörter)","betrag":Endbetrag in Euro als Zahl oder null,"posten":[{"name":"kurze Bezeichnung","betrag":Euro als Zahl}]}' +
+    "\n\nRegeln: datum ist das Rechnungsdatum. betrag ist der zu zahlende Gesamtbetrag der Rechnung. posten sind die abgerechneten Leistungen (GOÄ/GOZ-Ziffern zusammengefasst mit Kurzname, Material- und Laborkosten, Auslagen) mit ihrem Euro-Betrag; gleiche Ziffern dürfen zusammengefasst werden; höchstens 30 Posten; wenn keine Einzelposten erkennbar sind, leere Liste. " +
+    "art wählst du aus: " + ARTEN.join(", ") + ". Unbekanntes ist null. Zahlen mit Punkt als Dezimaltrennzeichen.";
+}
+function applyExtract(b, d) {
+  var n = function (v) { return typeof v === "number" && isFinite(v) ? r2(v) : (typeof v === "string" ? parseNum(v) : null); };
+  if (d.datum && /^\d{4}-\d{2}-\d{2}$/.test(d.datum)) b.datum = d.datum;
+  if (d.nr) b.nr = String(d.nr);
+  if (d.von) b.von = String(d.von);
+  if (d.art) { var a = ARTEN.find(function (x) { return x.toLowerCase() === String(d.art).toLowerCase(); }); b.art = a || String(d.art); }
+  if (d.zweck) b.zweck = String(d.zweck);
+  var total = n(d.betrag), ps = Array.isArray(d.posten) ? d.posten.filter(function (p) { return p && p.name && n(p.betrag) != null; }) : [];
+  var psum = sum(ps.map(function (p) { return n(p.betrag); }));
+  if (ps.length >= 2 && (total == null || Math.abs(psum - total) <= Math.max(1, total * 0.03))) {
+    b.posten = ps.map(function (p) { var q = newPosten(); q.name = String(p.name).slice(0, 80); q.betrag = n(p.betrag); q.erst = null; return q; });
+    if (total != null && Math.abs(psum - total) > 0.005) { var q2 = newPosten(); q2.name = "Rundung / Sonstiges"; q2.betrag = r2(total - psum); b.posten.push(q2); }
+  } else if (total != null) { b.posten = []; b.betrag = total; b.erst = null; }
+}
+async function readBill(b, file) {
+  busy[b.id] = file ? "Beleg wird vorbereitet …" : "Rechnung wird gelesen …"; renderBills();
+  var sample = await getSample(), lim = sample ? await sample.limits().catch(function () { return null; }) : null;
+  var maxBytes = lim && lim.images ? lim.images.maxInputBytes : 0;
+  var pages;
+  try {
+    if (file) {
+      pages = await filePages(file, maxBytes);
+      belege[b.id] = pages.store; b.beleg = { name: file.name || "Foto", pages: pages.store.length, at: Date.now() };
+      touch();
+    } else {
+      var pg = belege[b.id] || [];
+      pages = { store: pg, read: pg.map(function (s) { return new Blob([unb64(s)], { type: "image/jpeg" }); }), text: "" };
+    }
+  } catch (e) {
+    delete busy[b.id]; renderBills();
+    setStatus(e && e.message === "script" ? "Das PDF-Modul ließ sich nicht laden. Fotografier die Rechnung stattdessen oder trag sie von Hand ein." : "Die Datei ließ sich nicht öffnen. Nimm ein Foto (JPG/PNG) oder ein PDF.", true);
+    return;
+  }
+  if (!sample) { delete busy[b.id]; renderBills(); setStatus("Beleg angehängt. Automatisches Auslesen gibt es nur in der Claude-App – bitte die Felder selbst ausfüllen.", true); return; }
+  var imgs = lim && lim.images ? pages.read.filter(Boolean).slice(0, lim.images.maxCount) : [];
+  if (!imgs.length && !pages.text.trim()) { delete busy[b.id]; renderBills(); setStatus("Bilder können hier nicht ausgelesen werden – bitte die Felder selbst ausfüllen.", true); return; }
+  busy[b.id] = "Rechnung wird gelesen …"; renderBills();
+  try {
+    var d = await sample.json(extractPrompt(pages.text), { images: imgs, modelTier: "default" });
+    if (!d || typeof d !== "object") throw { code: "parse" };
+    applyExtract(b, d);
+    delete busy[b.id]; touch();
+    var ty = b.datum ? +b.datum.slice(0, 4) : year;
+    if (ty !== year && ty >= Y0 && ty <= Y1) {
+      var i = cur.bills.indexOf(b); if (i >= 0) cur.bills.splice(i, 1);
+      else Object.keys(saved).forEach(function (k) { var j = saved[k].bills.indexOf(b); if (j >= 0) saved[k].bills.splice(j, 1); });
+      var target = saved[ty] || normYear(defaultYear()); saved[ty] = target; target.bills.unshift(b);
+      setYear(ty); openBills[b.id] = true; renderBills();
+      setStatus("Rechnung vom " + fmtDate(b.datum) + " eingelesen und ins Jahr " + ty + " einsortiert. Bitte prüfen und anhaken, was die PKV erstattet.");
+    } else {
+      openBills[b.id] = true; renderBills();
+      setStatus("Rechnung eingelesen. Bitte prüfen und bei den Posten anhaken, was die PKV erstattet.");
+    }
+    renderResults();
+    var el = billsEl.querySelector('.bill[data-bid="' + b.id + '"]'); if (el) el.scrollIntoView({ block: "start", behavior: "smooth" });
+  } catch (e) {
+    delete busy[b.id]; renderBills();
+    var c = e && e.code;
+    setStatus(c === "not_granted" ? "Auslesen ist nicht erlaubt worden. Der Beleg ist angehängt – bitte Felder selbst ausfüllen oder »Neu auslesen« tippen und zustimmen."
+      : c === "rate_limited" ? "Gerade zu viele Anfragen. Versuch »Neu auslesen« in ein paar Minuten."
+      : c === "image_rejected" ? "Das Bild wurde nicht angenommen. Versuch ein schärferes Foto."
+      : "Die Rechnung konnte nicht ausgelesen werden. Der Beleg ist angehängt – bitte Felder selbst ausfüllen.", true);
+  }
+}
+function showBeleg(b) {
+  var pg = belege[b.id] || [];
+  document.getElementById("belegTitle").textContent = [b.von, fmtDate(b.datum)].filter(Boolean).join(" · ") || "Beleg";
+  document.getElementById("belegPages").innerHTML = pg.map(function (s, i) { return '<img src="data:image/jpeg;base64,' + s + '" alt="Beleg Seite ' + (i + 1) + '">'; }).join("");
+  document.getElementById("belegDlg").hidden = false; document.getElementById("belegClose").focus();
+}
+document.getElementById("belegClose").addEventListener("click", function () { document.getElementById("belegDlg").hidden = true; });
+document.getElementById("belegDlg").addEventListener("click", function (e) { if (e.target === this) this.hidden = true; });
+
+document.getElementById("newBill").addEventListener("click", addBill);
+document.getElementById("newBillTop").addEventListener("click", addBill);
+document.getElementById("ytable").addEventListener("click", function (e) { var pb = e.target.closest("[data-pdf]"); if (pb) { makeYearPdf(+pb.dataset.pdf); return; } var b = e.target.closest("[data-goto]"); if (b) { setYear(+b.dataset.goto); window.scrollTo({ top: 0 }); } });
+
+var undoBuf = null, toastTimer = null;
+function toast(text, undo) {
+  undoBuf = undo;
+  document.getElementById("toastText").textContent = text;
+  document.getElementById("toast").hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { document.getElementById("toast").hidden = true; undoBuf = null; }, 6000);
+}
+document.getElementById("undo").addEventListener("click", function () {
+  if (undoBuf) { undoBuf(); undoBuf = null; touch(); renderInputs(); renderResults(); }
+  document.getElementById("toast").hidden = true;
+});
+
+var sel = document.getElementById("year");
+for (var yy = Y0; yy <= Y1; yy++) { var op = document.createElement("option"); op.value = yy; op.textContent = yy; sel.appendChild(op); }
+sel.addEventListener("change", function () { setYear(+sel.value); });
+document.getElementById("prevYear").addEventListener("click", function () { if (year > Y0) setYear(year - 1); });
+document.getElementById("nextYear").addEventListener("click", function () { if (year < Y1) setYear(year + 1); });
+function setYear(y) {
+  year = y; sel.value = y;
+  cur = saved[y] || clone(derive(y));
+  normYear(cur); openBills = {};
+  document.getElementById("prevYear").disabled = y <= Y0;
+  document.getElementById("nextYear").disabled = y >= Y1;
+  renderInputs(); renderResults();
+}
+
+/* ---------- Speichern: leere Vorlage beim Öffnen, Sicherung mit Sicherungscode, verschlüsselter Zwischenspeicher (wie Haushaltsbuch) ---------- */
+var store = { mode: "none", col: null }, draftTimer = null, writing = false, again = false;
+var DRAFT_KEY = "pkv.entwurf", APP = "pkv-kostenrechner";
+var session = { dek: null, dekRaw: null, wraps: {}, touched: false, unsaved: false };
+var pending = null;
+function setStatus(t, warn) { var el = document.getElementById("status"); el.textContent = t; el.classList.toggle("warn", !!warn); }
+function payload() { return { app: "pkv", version: 1, saved: saved }; }
+function yearCount(p) { return p && p.saved ? Object.keys(p.saved).length : 0; }
+function billCount() { return sum(Object.keys(saved).map(function (k) { return (saved[k].bills || []).length; })); }
+function scheduleSave() {
+  session.touched = true; session.unsaved = true;
+  clearTimeout(draftTimer); draftTimer = setTimeout(function () { draftTimer = null; saveDraft(); }, 400);
+}
+function flushSave() { if (draftTimer) { clearTimeout(draftTimer); draftTimer = null; saveDraft(); } }
+document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flushSave(); });
+window.addEventListener("pagehide", flushSave);
+
+/* Verschlüsselung wie im Haushaltsbuch: zufälliger Datenschlüssel (AES-GCM, 256 Bit), zweimal beigelegt –
+   mit dem Sicherungscode und mit dem Masterkey verschlossen (PBKDF2, 250.000 Runden, SHA-256). */
+function b64(buf) { var u = new Uint8Array(buf), s = ""; for (var i = 0; i < u.length; i += 8192) s += String.fromCharCode.apply(null, u.subarray(i, i + 8192)); return btoa(s); }
+function unb64(s) { var b = atob(s), u = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
+function rnd(n) { return crypto.getRandomValues(new Uint8Array(n)); }
+async function deriveKey(secret, salt) {
+  var base = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt: salt, iterations: 250000, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+async function useDek(raw) { session.dekRaw = raw; session.dek = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]); }
+async function newDek() { await useDek(rnd(32)); session.wraps = {}; }
+async function wrapDek(secret) {
+  var salt = rnd(16), iv = rnd(12), k = await deriveKey(secret, salt);
+  var ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, k, session.dekRaw);
+  return { salt: b64(salt), iv: b64(iv), data: b64(ct) };
+}
+async function setSecret(kind, secret) { if (!session.dek) await newDek(); session.wraps[kind] = await wrapDek(secret); }
+async function encryptState(withBelege) {
+  var iv = rnd(12), p = payload(); if (withBelege) p.belege = refBelege();
+  var ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, session.dek, new TextEncoder().encode(JSON.stringify(p)));
+  return { enc: 2, iv: b64(iv), data: b64(ct), keys: clone(session.wraps) };
+}
+async function unlockWith(j, secret) {
+  var kinds = ["code", "master"];
+  for (var i = 0; i < kinds.length; i++) {
+    var w = j.keys && j.keys[kinds[i]]; if (!w) continue;
+    try {
+      var k = await deriveKey(secret, unb64(w.salt));
+      var raw = new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(w.iv) }, k, unb64(w.data)));
+      var dek = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
+      var p2 = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(j.iv) }, dek, unb64(j.data));
+      session.dekRaw = raw; session.dek = dek; session.wraps = clone(j.keys);
+      return { data: JSON.parse(new TextDecoder().decode(p2)), kind: kinds[i] };
+    } catch (x) { /* nächster Schlüssel */ }
+  }
+  throw new Error("locked");
+}
+function unlockedText(kind) { return kind === "master" ? " Mit dem Masterkey entsperrt – unter »Schlüssel« kannst du einen neuen Sicherungscode festlegen." : ""; }
+
+/* Belege: im Zwischenspeicher dieses Geräts (IndexedDB, wie die Fotos im Zählerbuch) je Seite ein Eintrag,
+   verschlüsselt mit demselben Datenschlüssel; dauerhaft stecken sie in der Sicherungsdatei. */
+function allBills() { var a = []; Object.keys(saved).forEach(function (k) { a = a.concat(saved[k].bills || []); }); if (cur && !saved[year]) a = a.concat(cur.bills); return a; }
+function refBelege() { var o = {}; allBills().forEach(function (b) { if (belege[b.id] && belege[b.id].length) o[b.id] = belege[b.id]; }); return o; }
+var written = {}; // Eintrags-ID -> Kennung, mit welchem Schlüssel und Inhalt er geschrieben wurde
+var BPRE = "beleg_";
+function keyTag() { return session.dekRaw ? b64(session.dekRaw) : "plain"; }
+var IDBH = null;
+function idb() {
+  if (IDBH) return IDBH;
+  IDBH = new Promise(function (ok) { try { var r = indexedDB.open("pkv-belege", 1); r.onupgradeneeded = function () { r.result.createObjectStore("p"); }; r.onsuccess = function () { ok(r.result); }; r.onerror = function () { ok(null); }; r.onblocked = function () { ok(null); }; } catch (e) { ok(null); } });
+  return IDBH;
+}
+async function idbDo(mode, fn) {
+  var db = await idb(); if (!db) return null;
+  return new Promise(function (ok) { try { var tx = db.transaction("p", mode), st = tx.objectStore("p"), r = fn(st); tx.oncomplete = function () { ok(r ? r.result : true); }; tx.onerror = tx.onabort = function () { ok(null); }; } catch (e) { ok(null); } });
+}
+async function encBytes(bytes) {
+  if (!session.dek) return { data: bytes.buffer.slice(0) };
+  var iv = rnd(12), ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, session.dek, bytes);
+  return { enc: 2, iv: b64(iv), data: ct };
+}
+async function decBytes(o) {
+  if (!o.enc) return new Uint8Array(o.data);
+  return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(o.iv) }, session.dek, o.data));
+}
+async function belegWrite(id, body) { var r = await idbDo("readwrite", function (st) { return st.put(body, id); }); if (r == null) throw new Error("idb"); }
+async function belegDelete(id) { await idbDo("readwrite", function (st) { return st.delete(id); }); }
+async function belegIds() { return (await idbDo("readonly", function (st) { return st.getAllKeys(); })) || []; }
+async function belegRead(id) { return idbDo("readonly", function (st) { return st.get(id); }); }
+/* Aufräumen: Belege, die eine frühere Version im Konto bzw. im kleinen Gerätespeicher abgelegt hat */
+async function cleanupOldBelege() {
+  try { var ks = []; for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (k && k.indexOf("pkv." + BPRE) === 0) ks.push(k); } ks.forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
+  if (store.mode === "db") { try { var snap = await store.col.get(); for (var j = 0; j < snap.docs.length; j++) if (snap.docs[j].id.indexOf(BPRE) === 0) await store.col.doc(snap.docs[j].id).delete(); } catch (e) {} }
+}
+async function syncBelege() {
+  var refs = refBelege(), tag = keyTag(), want = {}, failed = false;
+  Object.keys(refs).forEach(function (bid) { refs[bid].forEach(function (pg, i) { want[BPRE + bid + "_" + i] = { pg: pg, sig: tag + ":" + pg.length + ":" + pg.slice(-24) }; }); });
+  for (var id in want) {
+    if (written[id] === want[id].sig) continue;
+    try { await belegWrite(id, await encBytes(unb64(want[id].pg))); written[id] = want[id].sig; } catch (e) { failed = true; }
+  }
+  for (var id2 in written) if (!want[id2]) { try { await belegDelete(id2); } catch (e) {} delete written[id2]; }
+  return !failed;
+}
+async function loadDraftBelege() {
+  var ids = await belegIds(), got = {};
+  for (var i = 0; i < ids.length; i++) {
+    var m = /^beleg_(.+)_(\d+)$/.exec(ids[i]); if (!m) continue;
+    try { var o = await belegRead(ids[i]); if (!o) continue; var pg = b64(await decBytes(o)); (got[m[1]] = got[m[1]] || [])[+m[2]] = pg; written[ids[i]] = keyTag() + ":" + pg.length + ":" + pg.slice(-24); } catch (e) {}
+  }
+  Object.keys(got).forEach(function (k) { belege[k] = got[k].filter(Boolean); });
+}
+async function draftBody() {
+  var b = session.dek ? await encryptState() : { data: clone(payload()) };
+  b.app = APP; b.updated = Date.now(); b.count = billCount();
+  return b;
+}
+async function writeDraft(body) {
+  if (store.mode === "db") return store.col.doc("entwurf").set(body);
+  localStorage.setItem(DRAFT_KEY, JSON.stringify(body));
+}
+async function readDraft() {
+  if (store.mode === "db") { var s = await store.col.doc("entwurf").get(); return s.exists ? s.data() : null; }
+  try { var t = localStorage.getItem(DRAFT_KEY); return t ? JSON.parse(t) : null; } catch (e) { return null; }
+}
+async function clearDraft() {
+  try { if (store.mode === "db") await store.col.doc("entwurf").delete(); else localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+  try { var ids = await belegIds(); for (var i = 0; i < ids.length; i++) await belegDelete(ids[i]); } catch (e) {}
+  written = {};
+}
+async function saveDraft() {
+  if (!session.touched || store.mode === "none") return;
+  if (pending) { setStatus("Noch nicht zwischengespeichert: Entscheide oben erst, ob du die Daten vom letzten Mal wiederherstellen oder verwerfen willst.", true); return; }
+  if (writing) { again = true; return; }
+  writing = true;
+  try {
+    await writeDraft(await draftBody());
+    var bOk = await syncBelege();
+    setStatus(!bOk ? "Änderungen sind zwischengespeichert, die Belege aber nicht – dieser Browser erlaubt keinen Gerätespeicher. Tippe »Sicherung speichern«, dann sind sie sicher."
+      : session.dek ? "Änderungen sind verschlüsselt zwischengespeichert. Zum dauerhaften Aufheben »Sicherung speichern«."
+      : "Änderungen sind zwischengespeichert, aber noch ohne Sicherungscode. Mit »Sicherung speichern« legst du einen Code fest.", !bOk);
+  } catch (e) {
+    setStatus("Zwischenspeichern hat nicht geklappt – bitte »Sicherung speichern« tippen.", true);
+  }
+  writing = false;
+  if (again) { again = false; saveDraft(); }
+}
+function validState(d) { return d && d.saved && typeof d.saved === "object"; }
+function fmtWhen(ms) { var d = new Date(ms); return d.toLocaleDateString("de-DE") + ", " + d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }); }
+function renderRestore() {
+  var box = document.getElementById("restoreBox");
+  if (!pending) { box.hidden = true; return; }
+  box.hidden = false;
+  var n = pending.count;
+  document.getElementById("restoreText").textContent = "Nicht gesicherte Daten vom " + fmtWhen(pending.updated || Date.now()) +
+    (n ? " (" + n + (n === 1 ? " Rechnung" : " Rechnungen") + ")" : "") + (pending.enc ? " – mit deinem Sicherungscode geschützt." : ".");
+  document.getElementById("restoreAsk").hidden = !pending.askDrop;
+  document.getElementById("restoreBtns").hidden = !!pending.askDrop;
+}
+function setSaved(p) {
+  saved = {};
+  Object.keys(p.saved || {}).forEach(function (k) { var y = +k; if (y >= Y0 && y <= Y1 && p.saved[k]) saved[y] = normYear(p.saved[k]); });
+  setYear(year);
+}
+document.getElementById("restoreBox").addEventListener("click", async function (e) {
+  var b = e.target.closest("button"); if (!b || !pending) return;
+  if (b.id === "restoreYes") {
+    var data = null, p = pending, how = "";
+    if (p.enc) {
+      var code = await askCode({ title: "Zwischenspeicher entsperren", ok: "Wiederherstellen", repeat: false,
+        text: "Gib deinen Sicherungscode oder deinen Masterkey ein.", placeholder: "Sicherungscode oder Masterkey",
+        check: async function (c) { try { var r = await unlockWith(p, c); data = r.data; how = r.kind; return true; } catch (x) { return false; } } });
+      if (code == null) return;
+    } else data = p.data;
+    if (!validState(data)) { setStatus("Der Zwischenspeicher ist beschädigt.", true); return; }
+    belege = {}; try { await loadDraftBelege(); } catch (x) {}
+    pending = null; setSaved(clone(data)); session.touched = true; session.unsaved = true;
+    renderRestore();
+    setStatus("Wiederhergestellt. Zum dauerhaften Aufheben »Sicherung speichern«." + (p.enc ? unlockedText(how) : ""));
+    saveDraft();
+  } else if (b.id === "restoreNo") { pending.askDrop = true; renderRestore(); }
+  else if (b.id === "restoreKeep") { pending.askDrop = false; renderRestore(); }
+  else if (b.id === "restoreDrop") {
+    pending = null; renderRestore(); await clearDraft();
+    setStatus("Verworfen. Leere Vorlage – lade deine Sicherung oder fang mit deinem Tarif an.");
+    if (session.touched) saveDraft();
+  }
+});
+async function initStore() {
+  var c = window.claude, db = null, user = null;
+  if (c && c.use) { try { var res = await Promise.all([c.use("db"), c.use("user")]); db = res[0]; user = res[1]; } catch (e) {} }
+  var id = null; try { id = user ? await user.id() : null; } catch (e) {}
+  if (db && id) { store.mode = "db"; store.col = db.collection("data/users/" + id); } else store.mode = "local";
+  try {
+    var d = await readDraft();
+    await cleanupOldBelege();
+    (await belegIds()).forEach(function (id) { written[id] = "alt"; });
+    if (d && (d.enc || validState(d.data))) { pending = d; renderRestore(); }
+  } catch (e) {}
+  if (pending) setStatus("Leere Vorlage. Oben kannst du die Daten vom letzten Mal wiederherstellen.");
+  else if (!session.touched) setStatus("Leere Vorlage – lade deine Sicherung oder fang mit deinem Tarif an.");
+  else saveDraft();
+}
+
+/* ---------- Dateien ---------- */
+async function saveFile(name, data) {
+  var c = window.claude;
+  if (c && c.use) {
+    var dl = null; try { dl = await c.use("downloads"); } catch (e) {}
+    if (dl) {
+      try { await dl.save({ filename: name, data: data }); setStatus("Datei gespeichert: " + name); return true; }
+      catch (e) { if (!e || e.code !== "declined") setStatus("Datei konnte hier nicht gespeichert werden", true); return false; }
+    }
+  }
+  try {
+    var blob = data instanceof Blob ? data : new Blob([data], { type: "application/json" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+    setStatus("Datei gespeichert: " + name);
+    return true;
+  } catch (e) { setStatus("Dateien lassen sich in dieser Ansicht nicht speichern.", true); return false; }
+}
+function today() { var d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+
+/* Kleiner XLSX-Schreiber ohne Bibliothek (wie Haushaltsbuch) */
+var CRC = (function () { var t = [], c; for (var n = 0; n < 256; n++) { c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8) { var c = 0xFFFFFFFF; for (var i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zip(files) {
+  var enc = new TextEncoder(), parts = [], central = [], off = 0;
+  function u16(v) { return [v & 255, (v >>> 8) & 255]; }
+  function u32(v) { return [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255]; }
+  files.forEach(function (f) {
+    var name = enc.encode(f.name), data = enc.encode(f.data), crc = crc32(data);
+    var head = [].concat(u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(0), u16(0x21), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0));
+    parts.push(new Uint8Array(head), name, data);
+    central.push(new Uint8Array([].concat(u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(0), u16(0x21), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(off))), name);
+    off += head.length + name.length + data.length;
+  });
+  var csize = central.reduce(function (a, x) { return a + x.length; }, 0);
+  var end = new Uint8Array([].concat(u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length), u32(csize), u32(off), u16(0)));
+  return new Blob(parts.concat(central, [end]), { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+}
+function xmlEsc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ""); }
+function colName(i) { var s = ""; i++; while (i > 0) { var m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; }
+var XL_STYLES = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+  '<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00\\ &quot;€&quot;;[Red]\\-#,##0.00\\ &quot;€&quot;"/></numFmts>' +
+  '<fonts count="5"><font><sz val="11"/><color rgb="FF142033"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FF142033"/><name val="Calibri"/></font><font><b/><sz val="16"/><color rgb="FF142033"/><name val="Calibri"/></font><font><b/><sz val="10"/><color rgb="FF5A6779"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FF1F5FA8"/><name val="Calibri"/></font></fonts>' +
+  '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF1F4F8"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE7EEF8"/></patternFill></fill></fills>' +
+  '<borders count="3"><border/><border><bottom style="thin"><color rgb="FFD9E0E9"/></bottom></border><border><top style="medium"><color rgb="FFD9E0E9"/></top></border></borders>' +
+  '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="8">' +
+  '<xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>' +
+  '<xf numFmtId="0" fontId="3" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1"/>' +
+  '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" applyNumberFormat="1"/>' +
+  '<xf numFmtId="164" fontId="1" fillId="3" borderId="2" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>' +
+  '<xf numFmtId="0" fontId="1" fillId="3" borderId="2" applyFont="1" applyFill="1" applyBorder="1"/>' +
+  '<xf numFmtId="0" fontId="4" fillId="0" borderId="1" applyFont="1" applyBorder="1"/>' +
+  '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" applyFont="1"/>' +
+  '<xf numFmtId="0" fontId="3" fillId="0" borderId="0" applyFont="1"/>' +
+  '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+function sheetXml(rows, widths, freeze) {
+  var out = [];
+  rows.forEach(function (row, ri) {
+    var r = ri + 1, cells = [];
+    (row.cells || []).forEach(function (v, ci) {
+      var ref = colName(ci) + r, k = row.kind, isNum = typeof v === "number" && isFinite(v), st;
+      if (k === "head") st = 1; else if (k === "title") st = 6; else if (k === "section") st = 5; else if (k === "note") st = 7;
+      else if (k === "total") st = isNum ? 3 : 4; else st = isNum ? 2 : 0;
+      if (v == null || v === "") { if (st === 3 || st === 4 || st === 1) cells.push('<c r="' + ref + '" s="' + st + '"/>'); return; }
+      if (isNum) cells.push('<c r="' + ref + '" s="' + st + '"><v>' + (Math.round(v * 10000) / 10000) + "</v></c>");
+      else cells.push('<c r="' + ref + '" s="' + st + '" t="inlineStr"><is><t xml:space="preserve">' + xmlEsc(v) + "</t></is></c>");
+    });
+    out.push('<row r="' + r + '">' + cells.join("") + "</row>");
+  });
+  var pane = freeze ? '<pane xSplit="' + freeze[0] + '" ySplit="' + freeze[1] + '" topLeftCell="' + colName(freeze[0]) + (freeze[1] + 1) + '" activePane="bottomRight" state="frozen"/>' : "";
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" showGridLines="0">' + pane + "</sheetView></sheetViews>" +
+    "<cols>" + widths.map(function (w, i) { return '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>'; }).join("") + "</cols><sheetData>" + out.join("") + "</sheetData></worksheet>";
+}
+function buildXlsx(sheets) {
+  var files = [
+    { name: "[Content_Types].xml", data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+      sheets.map(function (_, i) { return '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'; }).join("") + "</Types>" },
+    { name: "_rels/.rels", data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
+    { name: "xl/workbook.xml", data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' +
+      sheets.map(function (sh, i) { return '<sheet name="' + xmlEsc(sh.name) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>'; }).join("") + "</sheets></workbook>" },
+    { name: "xl/_rels/workbook.xml.rels", data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      sheets.map(function (_, i) { return '<Relationship Id="rId' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>'; }).join("") +
+      '<Relationship Id="rId' + (sheets.length + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>' },
+    { name: "xl/styles.xml", data: XL_STYLES }
+  ];
+  sheets.forEach(function (sh, i) { files.push({ name: "xl/worksheets/sheet" + (i + 1) + ".xml", data: sheetXml(sh.rows, sh.widths, sh.freeze) }); });
+  return zip(files);
+}
+var SET_LABELS = [["beitragGesamt", "PKV-Beitrag gesamt pro Monat"], ["agAnteil", "Arbeitgeberanteil pro Monat"], ["bre", "Beitragsrückerstattung bei keiner Einreichung"], ["pauschale", "Pauschalerstattung pro Jahr"], ["selbstbehalt", "Selbstbehalt pro Jahr"]];
+function yearRows(d, y) {
+  var r = compute(d, y), rows = [];
+  function row(kind, cells) { rows.push({ kind: kind, cells: cells }); }
+  row("title", ["PKV-Kosten " + y]); row("blank", []);
+  row("section", ["Tarif"]);
+  var es = effSettings(y);
+  SET_LABELS.forEach(function (l) { row("item", [l[1], l[0] === "agAnteil" ? r.AG : es[l[0]], d.settings[l[0]] == null && es.src[l[0]] != null ? "aus " + es.src[l[0]] : ""]); });
+  row("item", ["Arbeitnehmeranteil pro Monat (du)", r.AN]);
+  row("item", ["Pauschale entfällt bei Einreichung", es.pauschaleBedingt ? "ja" : "nein"]);
+  row("blank", []);
+  row("section", ["Rechnungen"]);
+  row("head", ["Datum", "Rechnungsnr.", "Rechnungssteller", "Art", "Wofür / Posten", "Status", "Betrag", "Erstattung", "Eigenanteil"]);
+  d.bills.slice().sort(function (a, b) { return (a.datum || "9999").localeCompare(b.datum || "9999"); }).forEach(function (b) {
+    var x = billSums(b);
+    row("item", [fmtDate(b.datum), b.nr, b.von, b.art, b.zweck, STATUS[b.status], x.betrag, x.erst, x.own]);
+    b.posten.forEach(function (p) { row("item", ["", "", "", "", "   ↳ " + (p.name || "Posten"), "", p.betrag, p.erst, (p.betrag || 0) - (p.erst || 0)]); });
+  });
+  row("total", ["Summe", "", "", "", "", "", r.R, r.E, r.own]);
+  row("blank", []);
+  row("section", ["Vergleich"]);
+  row("head", ["", "Alles einreichen", "Nichts einreichen"]);
+  row("item", ["Rechnungen gesamt", r.R, r.R]);
+  row("item", ["− Erstattung der PKV (nach Selbstbehalt)", -r.effAll, null]);
+  row("item", ["− Beitragsrückerstattung", null, -r.B]);
+  row("item", ["− Pauschalerstattung", r.Pc ? null : -r.P, -r.P]);
+  row("total", ["= Krankheitskosten", r.costAll, r.costNone]);
+  row("item", ["+ Dein Beitragsanteil (ohne Arbeitgeber)", r.beitraege, r.beitraege]);
+  row("total", ["= Gesamtkosten im Jahr", r.beitraege + r.costAll, r.beitraege + r.costNone]);
+  row("blank", []);
+  row("item", ["Besser", r.better === "pkv" ? "Einreichen" : "Selbst zahlen"]);
+  row("item", ["Einreichen lohnt ab Erstattung von", r.threshold]);
+  row("item", ["Gesamtkosten aktueller Stand", r.beitraege + r.costIst]);
+  return rows;
+}
+function exportXlsx() {
+  var sheets = [], ov = [];
+  ov.push({ kind: "title", cells: ["PKV-Kostenrechner"] });
+  ov.push({ kind: "note", cells: ["Export vom " + new Date().toLocaleDateString("de-DE")] });
+  ov.push({ kind: "blank", cells: [] });
+  ov.push({ kind: "head", cells: ["Jahr", "Rechnungen", "Erstattungsfähig", "Eigenanteil", "Rückerst. + Pauschale", "Kosten einreichen", "Kosten selbst zahlen", "Besser", "PKV-Beitrag gesamt", "davon Arbeitgeber", "davon du", "Gesamt (Stand)"] });
+  var years = Object.keys(saved).map(Number); if (years.indexOf(year) < 0) years.push(year); years.sort(function (a, b) { return a - b; });
+  years.forEach(function (y) {
+    var r = compute(y === year ? cur : derive(y), y);
+    ov.push({ kind: "item", cells: [String(y), r.R, r.E, r.own, r.B + r.P, r.costAll, r.costNone, r.better === "pkv" ? "Einreichen" : "Selbst zahlen", r.G * 12, r.AG * 12, r.beitraege, r.beitraege + r.costIst] });
+  });
+  sheets.push({ name: "Übersicht", rows: ov, widths: [8, 13, 15, 13, 18, 16, 18, 14, 17, 16, 12, 15], freeze: [1, 4] });
+  years.forEach(function (y) { sheets.push({ name: String(y), rows: yearRows(y === year ? cur : derive(y), y), widths: [40, 14, 26, 18, 32, 15, 13, 13, 13], freeze: null }); });
+  var bk = [{ kind: "note", cells: ["PKV-Sicherung – dieses Blatt wird beim Excel-Import gelesen, bitte nicht ändern. Fotos und PDFs der Belege stecken nur in der Sicherungsdatei (.json)."] }, { kind: "head", cells: ["Jahr", "Daten"] }];
+  Object.keys(saved).map(Number).sort(function (a, b) { return a - b; }).forEach(function (y) { bk.push({ kind: "item", cells: [String(y), JSON.stringify(saved[y])] }); });
+  sheets.push({ name: "Sicherung", rows: bk, widths: [10, 80], freeze: null });
+  saveFile("PKV-Kosten-" + today() + ".xlsx", buildXlsx(sheets));
+}
+document.getElementById("exportXlsx").addEventListener("click", exportXlsx);
+
+/* ---------- Jahresübersicht als PDF (jsPDF, wie die Abrechnung im Zählerbuch) ---------- */
+var JSPDF = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js", AUTOTABLE = "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js";
+async function pdfKit() {
+  if (!(window.jspdf && window.jspdf.jsPDF)) await loadScript(JSPDF);
+  if (!window.jspdf.jsPDF.API.autoTable) await loadScript(AUTOTABLE);
+  return window.jspdf.jsPDF;
+}
+function pe(n) { return (n < -0.004 ? "-" : "") + nf2.format(Math.abs(n)) + " €"; } /* Standardschrift kennt kein Minuszeichen U+2212 */
+function pt(s) { return String(s == null ? "" : s).replace(/\u2212/g, "-").replace(/[\u2190-\u21FF]/g, ">"); }
+async function makeYearPdf(y) {
+  var btn = document.getElementById("pdfBtn"); btn.disabled = true; setStatus("PDF für " + y + " wird erstellt …");
+  try {
+    var jsPDF = await pdfKit(), d = y === year ? cur : derive(y), r = compute(d, y), es = effSettings(y), withB = document.getElementById("pdfBelege").checked;
+    var doc = new jsPDF({ unit: "mm", format: "a4" }), W = 210, ink = [20, 32, 51], mut = [90, 103, 121], blue = [31, 95, 168], yy = 18;
+    function tbl(head, body, opts) {
+      doc.autoTable(Object.assign({ startY: yy, head: [head], body: body, theme: "plain", margin: { left: 14, right: 14 },
+        styles: { font: "helvetica", fontSize: 8.5, cellPadding: 1.5, textColor: ink, halign: "right" },
+        headStyles: { fontStyle: "bold", textColor: mut, fontSize: 7.5, lineWidth: { bottom: 0.3 }, lineColor: [200, 208, 215] },
+        footStyles: { fontStyle: "bold", textColor: ink, lineWidth: { top: 0.4 }, lineColor: ink },
+        bodyStyles: { lineWidth: { bottom: 0.1 }, lineColor: [225, 230, 235] }, showFoot: "lastPage",
+        didParseCell: function (c) { if (c.column.index === 0 || (opts && opts.left && opts.left.indexOf(c.column.index) >= 0)) c.cell.styles.halign = "left"; if (c.section === "body" && c.row.raw && c.row.raw.sub) { c.cell.styles.textColor = mut; c.cell.styles.fontSize = 7.5; } }
+      }, opts || {}));
+      yy = doc.lastAutoTable.finalY + 8;
+    }
+    function h2(t) { if (yy > 255) { doc.addPage(); yy = 18; } doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.setTextColor.apply(doc, blue); doc.text(t, 14, yy); yy += 4; }
+    doc.setFont("helvetica", "bold"); doc.setFontSize(17); doc.setTextColor.apply(doc, ink); doc.text("PKV-Jahresübersicht " + y, 14, yy);
+    doc.setFontSize(10); doc.setFont("helvetica", "normal"); doc.setTextColor.apply(doc, mut); doc.text("Erstellt am " + new Date().toLocaleDateString("de-DE"), W - 14, yy, { align: "right" }); yy += 9;
+    var verdict = !r.n ? "Keine Rechnungen in " + y + "." : r.better === "selbst" ? "Selbst zahlen war günstiger – " + pe(r.costAll - r.costNone) + " gespart gegenüber Einreichen." : "Einreichen war günstiger – " + pe(r.costNone - r.costAll) + " gespart gegenüber Selbstzahlen.";
+    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor.apply(doc, ink); doc.text(doc.splitTextToSize(pt(verdict), W - 28), 14, yy); yy += 9;
+
+    h2("Beitrag und Tarif");
+    tbl(["Posten", "pro Monat", "pro Jahr"], [
+      ["PKV-Beitrag gesamt", pe(r.G), pe(r.G * 12)],
+      ["Arbeitgeberanteil", pe(r.AG), pe(r.AG * 12)],
+      ["Arbeitnehmeranteil (du)", pe(r.AN), pe(r.AN * 12)],
+      ["Beitragsrückerstattung bei keiner Einreichung", "", pe(r.B)],
+      ["Pauschalerstattung" + (r.Pc ? " (entfällt bei Einreichung)" : ""), "", pe(r.P)],
+      ["Selbstbehalt", "", pe(r.SB)]
+    ]);
+
+    h2("Vergleich");
+    tbl(["", "Alles einreichen", "Nichts einreichen"], [
+      ["Rechnungen gesamt", pe(r.R), pe(r.R)],
+      ["- Erstattung der PKV (nach Selbstbehalt)", pe(-r.effAll), "–"],
+      ["- Beitragsrückerstattung", "–", pe(-r.B)],
+      ["- Pauschalerstattung", r.Pc ? "–" : pe(-r.P), pe(-r.P)],
+      ["= Krankheitskosten", pe(r.costAll), pe(r.costNone)],
+      ["+ Dein Beitragsanteil", pe(r.beitraege), pe(r.beitraege)]
+    ], { foot: [["= Gesamtkosten im Jahr", pe(r.beitraege + r.costAll), pe(r.beitraege + r.costNone)]] });
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor.apply(doc, mut);
+    doc.text(doc.splitTextToSize("Tatsächlicher Stand: " + (r.anySub ? "Rechnungen mit " + pe(r.Esub) + " Erstattung eingereicht" : "nichts eingereicht") + " – Gesamtkosten " + pe(r.beitraege + r.costIst) + ".", W - 28), 14, yy - 4); yy += 4;
+
+    h2("Rechnungen");
+    var body = [];
+    d.bills.slice().sort(function (a, b) { return (a.datum || "9999").localeCompare(b.datum || "9999"); }).forEach(function (b) {
+      var x = billSums(b);
+      body.push([fmtDate(b.datum) || "–", pt(b.nr), pt(b.von), pt(b.art), pt(b.zweck), STATUS[b.status], pe(x.betrag), pe(x.erst), pe(x.own)]);
+      b.posten.forEach(function (p) { var row = ["", "", "", "", "  - " + pt(p.name || "Posten"), "", pe(p.betrag || 0), pe(p.erst || 0), pe((p.betrag || 0) - (p.erst || 0))]; row.sub = true; body.push(row); });
+    });
+    if (body.length) tbl(["Datum", "Nr.", "Rechnungssteller", "Art", "Wofür / Posten", "Status", "Betrag", "Erstattung", "Eigenanteil"], body,
+      { left: [1, 2, 3, 4, 5], styles: { font: "helvetica", fontSize: 7.5, cellPadding: 1.2, textColor: ink, halign: "right", overflow: "linebreak" }, columnStyles: { 2: { cellWidth: 30 }, 4: { cellWidth: 38 } },
+        foot: [["Summe", "", "", "", "", "", pe(r.R), pe(r.E), pe(r.own)]] });
+    else { doc.setFontSize(9); doc.setTextColor.apply(doc, mut); doc.text("Keine Rechnungen.", 14, yy + 2); yy += 10; }
+
+    var cats = Object.keys(r.cats).map(function (k) { return [pt(k), pe(r.cats[k].betrag), pe(r.cats[k].erst), pe(r.cats[k].betrag - r.cats[k].erst)]; });
+    if (cats.length) { h2("Nach Art"); tbl(["Art", "Betrag", "Erstattung", "Eigenanteil"], cats); }
+
+    if (withB) {
+      var bl = d.bills.filter(function (b) { return belege[b.id] && belege[b.id].length; });
+      for (var i = 0; i < bl.length; i++) {
+        var b = bl[i], pg = belege[b.id];
+        for (var k = 0; k < pg.length; k++) {
+          var im = await new Promise(function (ok, no) { var m = new Image(); m.onload = function () { ok(m); }; m.onerror = no; m.src = "data:image/jpeg;base64," + pg[k]; });
+          doc.addPage(); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor.apply(doc, ink);
+          doc.text(pt("Beleg: " + [b.von, b.art, fmtDate(b.datum), b.nr ? "Nr. " + b.nr : ""].filter(Boolean).join(" · ") + (pg.length > 1 ? "  (Seite " + (k + 1) + "/" + pg.length + ")" : "")), 14, 16);
+          var mw = W - 28, mh = 262, w = mw, h = w * im.naturalHeight / im.naturalWidth; if (h > mh) { h = mh; w = h * im.naturalWidth / im.naturalHeight; }
+          doc.addImage("data:image/jpeg;base64," + pg[k], "JPEG", 14, 22, w, h);
+        }
+      }
+    }
+    var n = doc.getNumberOfPages();
+    for (var q = 1; q <= n; q++) { doc.setPage(q); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor.apply(doc, mut); doc.text("PKV-Jahresübersicht " + y, 14, 290); doc.text("Seite " + q + " / " + n, W - 14, 290, { align: "right" }); }
+    await saveFile("PKV-Jahresuebersicht-" + y + ".pdf", new Blob([doc.output("arraybuffer")], { type: "application/pdf" }));
+  } catch (e) {
+    setStatus(e && e.message === "script" ? "Das PDF-Modul ließ sich nicht laden. Prüf deine Internetverbindung und versuch es noch einmal." : "Das PDF konnte nicht erstellt werden.", true);
+  }
+  btn.disabled = false;
+}
+document.getElementById("pdfBtn").addEventListener("click", function () { makeYearPdf(year); });
+
+/* ---------- Dialog für Sicherungscode und Masterkey ---------- */
+var dlgResolve = null, dlgCheck = null, dlgMin = 4, dlgName = "Der Sicherungscode";
+function askCode(opts) {
+  document.getElementById("dlgTitle").textContent = opts.title;
+  document.getElementById("dlgText").textContent = opts.text;
+  document.getElementById("dlgOk").textContent = opts.ok;
+  var c1 = document.getElementById("dlgCode1"), c2 = document.getElementById("dlgCode2");
+  c1.value = ""; c2.value = ""; c2.hidden = !opts.repeat;
+  c1.placeholder = opts.placeholder || "Sicherungscode"; c2.placeholder = (opts.placeholder || "Sicherungscode") + " wiederholen";
+  document.getElementById("dlgCancel").textContent = opts.cancel || "Abbrechen";
+  dlgMin = opts.min || 4; dlgName = opts.name || "Der Sicherungscode";
+  document.getElementById("dlgErr").textContent = "";
+  document.getElementById("codeDlg").hidden = false; setTimeout(function () { c1.focus(); }, 50);
+  dlgCheck = opts.check || null;
+  return new Promise(function (res) { dlgResolve = res; });
+}
+function closeDlg(v) { document.getElementById("codeDlg").hidden = true; var r = dlgResolve; dlgResolve = null; if (r) r(v); }
+document.getElementById("dlgCancel").addEventListener("click", function () { closeDlg(null); });
+document.getElementById("dlgForm").addEventListener("submit", async function (e) {
+  e.preventDefault();
+  var c1 = document.getElementById("dlgCode1").value, c2 = document.getElementById("dlgCode2"), err = document.getElementById("dlgErr");
+  if (c1.length < dlgMin) { err.textContent = dlgName + " braucht mindestens " + dlgMin + " Zeichen."; return; }
+  if (!c2.hidden && c1 !== c2.value) { err.textContent = "Die beiden Eingaben stimmen nicht überein."; return; }
+  if (dlgCheck) {
+    var btn = document.getElementById("dlgOk"); btn.disabled = true; err.textContent = "Wird geprüft …";
+    var ok = await dlgCheck(c1); btn.disabled = false;
+    if (!ok) { err.textContent = "Das passt nicht – weder Sicherungscode noch Masterkey."; document.getElementById("dlgCode1").value = ""; return; }
+  }
+  closeDlg(c1);
+});
+
+/* ---------- Schlüssel verwalten ---------- */
+async function askMaster(first) {
+  var m = await askCode({ title: first ? "Masterkey festlegen" : "Neuer Masterkey", ok: "Masterkey speichern", repeat: true, min: 8, name: "Der Masterkey",
+    placeholder: "Masterkey", cancel: first ? "Später" : "Abbrechen",
+    text: "Mit dem Masterkey öffnest du deine Sicherungen auch dann, wenn du den Sicherungscode vergessen hast. Mindestens 8 Zeichen – bewahr ihn getrennt vom Sicherungscode auf, z. B. ausgedruckt zu Hause." });
+  if (m == null) return false;
+  setStatus("Masterkey wird eingerichtet …");
+  await setSecret("master", m);
+  return true;
+}
+function renderKeys() {
+  var box = document.getElementById("keyBox"); if (!box || box.hidden) return;
+  var h;
+  if (!session.dek) h = "<p>Lade zuerst deine Sicherung oder tippe einmal auf »Sicherung speichern«. Danach kannst du hier Sicherungscode und Masterkey ändern.</p>";
+  else h = "<p>Sicherungscode: <b>" + (session.wraps.code ? "festgelegt" : "fehlt") + "</b> · Masterkey: <b>" + (session.wraps.master ? "festgelegt" : "noch nicht festgelegt") + "</b></p>" +
+    '<div class="rowbtns"><button type="button" id="keyCode">Sicherungscode ändern</button><button type="button" id="keyMaster">' + (session.wraps.master ? "Masterkey ändern" : "Masterkey festlegen") + "</button></div>" +
+    '<p class="foot">Änderungen gelten für alle Sicherungen, die du ab jetzt speicherst. Ältere Sicherungsdateien öffnen sich weiter mit dem Code bzw. Masterkey von damals.</p>';
+  box.innerHTML = h;
+}
+document.getElementById("keysBtn").addEventListener("click", function () {
+  var box = document.getElementById("keyBox"); box.hidden = !box.hidden;
+  this.setAttribute("aria-expanded", String(!box.hidden)); renderKeys();
+});
+document.getElementById("keyBox").addEventListener("click", async function (e) {
+  var b = e.target.closest("button"); if (!b) return;
+  var done = false;
+  if (b.id === "keyCode") {
+    var c = await askCode({ title: "Neuer Sicherungscode", ok: "Code speichern", repeat: true, text: "Leg deinen neuen Sicherungscode fest." });
+    if (c != null) { setStatus("Sicherungscode wird geändert …"); await setSecret("code", c); done = "Neuer Sicherungscode"; }
+  } else if (b.id === "keyMaster") {
+    if (await askMaster(false)) done = "Neuer Masterkey";
+  }
+  if (!done) return;
+  renderKeys();
+  if (session.touched) saveDraft();
+  setStatus(done + " ist eingerichtet. Tippe jetzt »Sicherung speichern«, damit die Sicherungsdatei ihn bekommt.");
+});
+
+/* ---------- Sicherung speichern und laden ---------- */
+document.getElementById("backupSave").addEventListener("click", async function () {
+  if (!session.dek || !session.wraps.code) {
+    var code = await askCode({ title: "Sicherung schützen", ok: "Weiter", repeat: true,
+      text: "Leg einen Sicherungscode fest. Ohne ihn (oder den Masterkey) lässt sich die Sicherung später nicht öffnen – auch nicht von mir oder jemand anderem." });
+    if (code == null) return;
+    setStatus("Sicherung wird verschlüsselt …");
+    await setSecret("code", code);
+    if (!session.wraps.master) await askMaster(true);
+  }
+  try {
+    var body = await encryptState(true); body.app = APP; body.version = 2;
+    var ok = await saveFile("PKV-Sicherung-" + today() + ".json", JSON.stringify(body));
+    if (ok) {
+      session.unsaved = false; session.touched = false; clearTimeout(draftTimer); draftTimer = null;
+      if (!pending) await clearDraft();
+      var n = billCount();
+      var nb = Object.keys(refBelege()).length;
+      setStatus(n + (n === 1 ? " Rechnung" : " Rechnungen") + (nb ? " und " + nb + (nb === 1 ? " Beleg" : " Belege") : "") + " gesichert – mit Sicherungscode" + (session.wraps.master ? " und Masterkey geschützt." : " geschützt. Tipp: Unter »Schlüssel« einen Masterkey festlegen."));
+      renderKeys();
+    }
+  } catch (x) { setStatus("Sicherung konnte nicht erstellt werden.", true); }
+});
+function applyLoaded(data, label) {
+  var before = clone(saved), beforeB = belege, beforeTouched = session.touched;
+  belege = data.belege || {}; delete data.belege;
+  setSaved(clone(data));
+  session.touched = false; session.unsaved = false;
+  var n = billCount();
+  setStatus(label + ": " + n + (n === 1 ? " Rechnung." : " Rechnungen."));
+  toast(label, function () { saved = before; belege = beforeB; setYear(year); session.touched = beforeTouched; if (beforeTouched) scheduleSave(); });
+}
+document.getElementById("backupLoad").addEventListener("change", function (e) {
+  var f = e.target.files && e.target.files[0]; if (!f) return;
+  var rd = new FileReader();
+  rd.onload = async function () {
+    e.target.value = "";
+    var j;
+    try { j = JSON.parse(rd.result); } catch (x) { setStatus("Diese Datei ist keine PKV-Sicherung", true); return; }
+    if (!j || j.app !== APP) { setStatus("Diese Datei ist keine PKV-Sicherung", true); return; }
+    if (j.enc) {
+      var data = null, how = "";
+      var code = await askCode({ title: "Sicherung entsperren", ok: "Entsperren", repeat: false, placeholder: "Sicherungscode oder Masterkey",
+        text: "Gib deinen Sicherungscode oder deinen Masterkey ein.",
+        check: async function (c) { try { var r = await unlockWith(j, c); data = r.data; how = r.kind; return true; } catch (x) { return false; } } });
+      if (code == null) return;
+      if (!validState(data)) { setStatus("Die Sicherung ist beschädigt.", true); return; }
+      applyLoaded(data, "Sicherung geladen");
+      if (how === "master" || !session.wraps.master) setStatus("Sicherung geladen." + unlockedText(how) + (!session.wraps.master ? " Für diese Sicherung ist noch kein Masterkey festgelegt – das geht unter »Schlüssel«." : ""));
+      renderKeys();
+    } else setStatus("Diese Datei ist keine PKV-Sicherung", true);
+  };
+  rd.readAsText(f);
+});
+
+/* ---------- Excel-Import ---------- */
+async function unzipEntries(buf) {
+  var u8 = new Uint8Array(buf), dv = new DataView(buf), eocd = -1;
+  for (var i = u8.length - 22; i >= Math.max(0, u8.length - 70000); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error("zip");
+  var n = dv.getUint16(eocd + 10, true), p = dv.getUint32(eocd + 16, true), out = {}, dec = new TextDecoder();
+  for (var k = 0; k < n; k++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) throw new Error("zip");
+    var method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+    var nlen = dv.getUint16(p + 28, true), elen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+    var name = dec.decode(u8.subarray(p + 46, p + 46 + nlen));
+    var start = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true);
+    out[name] = { method: method, data: u8.subarray(start, start + csize) };
+    p += 46 + nlen + elen + clen;
+  }
+  return out;
+}
+async function entryText(e) {
+  if (!e) return null;
+  if (e.method === 0) return new TextDecoder().decode(e.data);
+  if (e.method !== 8 || typeof DecompressionStream === "undefined") throw new Error("deflate");
+  var ds = new Blob([e.data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return await new Response(ds).text();
+}
+function colIndex(ref) { var m = /^([A-Z]+)/.exec(ref), n = 0; for (var i = 0; i < m[1].length; i++) n = n * 26 + (m[1].charCodeAt(i) - 64); return n - 1; }
+async function readWorkbook(buf) {
+  var z = await unzipEntries(buf), P = new DOMParser();
+  function xml(t) { return P.parseFromString(t, "application/xml"); }
+  var shared = [];
+  var sst = await entryText(z["xl/sharedStrings.xml"]);
+  if (sst) Array.prototype.forEach.call(xml(sst).getElementsByTagName("si"), function (si) {
+    var ts = si.getElementsByTagName("t"), t = ""; for (var i = 0; i < ts.length; i++) t += ts[i].textContent; shared.push(t);
+  });
+  var wb = xml(await entryText(z["xl/workbook.xml"])), rels = xml(await entryText(z["xl/_rels/workbook.xml.rels"])), relMap = {};
+  Array.prototype.forEach.call(rels.getElementsByTagName("Relationship"), function (r) { relMap[r.getAttribute("Id")] = r.getAttribute("Target"); });
+  var sheets = [], list = wb.getElementsByTagName("sheet");
+  for (var si = 0; si < list.length; si++) {
+    var sh = list[si], rid = sh.getAttribute("r:id") || sh.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
+    var target = relMap[rid] || ""; target = target.replace(/^\//, ""); if (target.indexOf("xl/") !== 0) target = "xl/" + target;
+    var txt = await entryText(z[target]); if (!txt) continue;
+    var rows = [];
+    Array.prototype.forEach.call(xml(txt).getElementsByTagName("row"), function (row) {
+      var r = [];
+      Array.prototype.forEach.call(row.getElementsByTagName("c"), function (c) {
+        var t = c.getAttribute("t"), v = c.getElementsByTagName("v")[0], val = null;
+        if (t === "s" && v) val = shared[+v.textContent];
+        else if (t === "inlineStr") { var is = c.getElementsByTagName("t"); val = is.length ? is[0].textContent : ""; }
+        else if (t === "str" && v) val = v.textContent;
+        else if (t === "b" && v) val = v.textContent === "1";
+        else if (v && v.textContent !== "") val = parseFloat(v.textContent);
+        r[colIndex(c.getAttribute("r"))] = val;
+      });
+      rows[(+row.getAttribute("r") || rows.length + 1) - 1] = r;
+    });
+    sheets.push({ name: sh.getAttribute("name"), rows: rows });
+  }
+  return sheets;
+}
+function num(v) { if (typeof v === "number" && isFinite(v)) return v; if (typeof v === "string") return parseNum(v); return null; }
+function xlDate(v) {
+  if (typeof v === "number" && v > 20000) { var d = new Date(Date.UTC(1899, 11, 30) + v * 86400000); return d.toISOString().slice(0, 10); }
+  var m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(String(v || "").trim());
+  return m ? m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0") : "";
+}
+/* Excel-Vorlage (Blätter Tarif, Rechnungen, Posten – Kopfzeile in Zeile 4) */
+function fromTemplate(sheets) {
+  function sh(name) { return sheets.find(function (s) { return String(s.name).trim().toLowerCase() === name; }); }
+  function txt(v) { return v == null ? "" : String(v).trim(); }
+  var T = sh("tarif"), R = sh("rechnungen"), P = sh("posten"), out = {};
+  if (!R && !T) return null;
+  function yearObj(y) { if (!out[y]) out[y] = normYear(defaultYear()); return out[y]; }
+  function headRow(s, first) { for (var i = 0; i < Math.min(s.rows.length, 12); i++) { var r = s.rows[i]; if (r && txt(r[0]).toLowerCase() === first) return i; } return -1; }
+  if (T) {
+    var th = headRow(T, "jahr");
+    if (th >= 0) for (var i = th + 1; i < T.rows.length; i++) {
+      var r = T.rows[i]; if (!r) continue; var y = Math.round(num(r[0]) || 0); if (y < Y0 || y > Y1) continue;
+      var vals = { beitragGesamt: num(r[1]), agAnteil: num(r[2]), bre: num(r[3]), pauschale: num(r[4]), selbstbehalt: num(r[5]) };
+      var jn = txt(r[6]).toLowerCase(), any = jn === "ja" || jn === "nein";
+      Object.keys(vals).forEach(function (k) { if (vals[k] != null) any = true; });
+      if (!any) continue;
+      var d = yearObj(y);
+      Object.keys(vals).forEach(function (k) { if (vals[k] != null) d.settings[k] = vals[k]; });
+      if (jn === "ja" || jn === "nein") d.settings.pauschaleBedingt = jn === "ja";
+    }
+  }
+  var postenBy = {};
+  if (P) {
+    var ph = headRow(P, "rechnungsnr.");
+    if (ph >= 0) for (var k = ph + 1; k < P.rows.length; k++) {
+      var q = P.rows[k]; if (!q) continue; var nr = txt(q[0]), b = num(q[2]); if (!nr || b == null) continue;
+      var p = newPosten(); p.name = txt(q[1]); p.betrag = b; p.erst = txt(q[3]).toLowerCase() === "ja" ? b : num(q[5]);
+      (postenBy[nr] = postenBy[nr] || []).push(p);
+    }
+  }
+  if (R) {
+    var stMap = {}; Object.keys(STATUS).forEach(function (s) { stMap[STATUS[s].toLowerCase()] = s; });
+    var rh = headRow(R, "datum");
+    if (rh >= 0) for (var j = rh + 1; j < R.rows.length; j++) {
+      var w = R.rows[j]; if (!w) continue;
+      var nr2 = txt(w[1]), datum = xlDate(w[0]);
+      if (!datum && !nr2 && !txt(w[2]) && num(w[6]) == null) continue;
+      var bl = newBill(); bl.datum = datum; bl.nr = nr2; bl.von = txt(w[2]); bl.art = txt(w[3]); bl.zweck = txt(w[4]);
+      bl.status = stMap[txt(w[5]).toLowerCase()] || "offen"; bl.betrag = num(w[6]); bl.erst = num(w[7]);
+      if (nr2 && postenBy[nr2]) { bl.posten = postenBy[nr2]; delete postenBy[nr2]; }
+      yearObj(datum ? +datum.slice(0, 4) : year).bills.push(bl);
+    }
+  }
+  return out;
+}
+function sheetToYear(rows) {
+  var d = defaultYear(), inBills = false, last = null, any = false;
+  var stMap = {}; Object.keys(STATUS).forEach(function (k) { stMap[STATUS[k].toLowerCase()] = k; });
+  rows.forEach(function (r) {
+    if (!r) return;
+    var a = r[0] == null ? "" : String(r[0]).trim(), lower = a.toLowerCase();
+    SET_LABELS.forEach(function (l) { if (lower === l[1].toLowerCase() && !/^aus \d{4}$/.test(String(r[2] || ""))) { d.settings[l[0]] = num(r[1]); any = true; } });
+    if (lower === "beitrag pro monat (dein anteil)" && num(r[1]) != null) { d.settings.beitragGesamt = r2(num(r[1]) * 2); any = true; }
+    if (lower === "pauschale entfällt bei einreichung") d.settings.pauschaleBedingt = String(r[1] || "").toLowerCase() === "ja";
+    if (lower === "datum" && String(r[1] || "").toLowerCase().indexOf("rechnungsnr") === 0) { inBills = true; return; }
+    if (!inBills) return;
+    if (lower === "summe") { inBills = false; return; }
+    var z = r[4] == null ? "" : String(r[4]);
+    if (!a && /^\s*↳/.test(z) && last) {
+      var p = newPosten(); p.name = z.replace(/^\s*↳\s*/, ""); p.betrag = num(r[6]); p.erst = num(r[7]); last.posten.push(p); return;
+    }
+    if (!a && !r[1] && !r[2] && num(r[6]) == null) return;
+    var b = newBill();
+    b.datum = xlDate(r[0]); b.nr = r[1] == null ? "" : String(r[1]); b.von = r[2] == null ? "" : String(r[2]); b.art = r[3] == null ? "" : String(r[3]); b.zweck = z;
+    b.status = stMap[String(r[5] || "").toLowerCase()] || "offen"; b.betrag = num(r[6]); b.erst = num(r[7]);
+    d.bills.push(b); last = b; any = true;
+  });
+  return any ? d : null;
+}
+document.getElementById("xlsxLoad").addEventListener("change", async function (e) {
+  var f = e.target.files && e.target.files[0]; if (!f) return;
+  e.target.value = "";
+  setStatus("Excel-Datei wird gelesen …");
+  try {
+    var sheets = await readWorkbook(await f.arrayBuffer()), found = {}, n = 0, fromBackup = false;
+    var bk = sheets.find(function (sh) { return String(sh.name).trim().toLowerCase() === "sicherung"; });
+    if (bk) bk.rows.forEach(function (r) {
+      if (!r || r[0] == null || typeof r[1] !== "string") return;
+      var y = +String(r[0]).trim(); if (!(y >= Y0 && y <= Y1)) return;
+      try { var d = JSON.parse(r[1]); if (d && d.settings && d.bills) { found[y] = normYear(d); n++; fromBackup = true; } } catch (x) {}
+    });
+    if (!fromBackup) sheets.forEach(function (sh) {
+      var nm = String(sh.name).trim(), y = +nm;
+      if (!/^\d{4}$/.test(nm) || y < Y0 || y > Y1) return;
+      var d = sheetToYear(sh.rows); if (d) { found[y] = d; n++; }
+    });
+    var fromTpl = false;
+    if (!n) { var tp = fromTemplate(sheets); if (tp) { found = tp; n = Object.keys(tp).length; fromTpl = n > 0; } }
+    if (!n) { setStatus("In dieser Excel-Datei wurden keine Rechnungen gefunden – erwartet werden die Blätter »Tarif«, »Rechnungen« und »Posten« der Vorlage oder ein Export dieses Rechners.", true); return; }
+    var before = clone(saved);
+    Object.keys(found).forEach(function (y) { saved[y] = found[y]; });
+    setYear(year); scheduleSave();
+    setStatus("Excel importiert" + (fromBackup ? " (aus dem Blatt »Sicherung«, 1:1)" : fromTpl ? " (Excel-Vorlage)" : "") + ": " + n + " Jahr" + (n === 1 ? "" : "e") + ". Zum dauerhaften Aufheben »Sicherung speichern«.");
+    toast("Excel importiert", function () { saved = before; setYear(year); scheduleSave(); });
+  } catch (x) {
+    setStatus(x && x.message === "deflate" ? "Dieser Browser kann die Excel-Datei nicht entpacken. Bitte Safari/Chrome aktualisieren." : "Die Excel-Datei konnte nicht gelesen werden.", true);
+  }
+});
+
+setYear(year);
+setStatus("Lädt …");
+initStore();
+</script>
+
+</body>
+</html>
